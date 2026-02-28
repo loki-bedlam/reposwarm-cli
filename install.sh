@@ -2,7 +2,6 @@
 set -e
 
 REPO="loki-bedlam/reposwarm-cli"
-VERSION="v1.0.0"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 
 # Detect OS and arch
@@ -21,14 +20,26 @@ case "$OS" in
 esac
 
 BINARY="reposwarm-${OS}-${ARCH}"
-URL="https://github.com/${REPO}/releases/download/${VERSION}/${BINARY}"
 
-echo "Installing reposwarm ${VERSION} (${OS}/${ARCH})..."
+# Primary: CloudFront (latest build from CodePipeline)
+CDN_URL="https://db22kd0yixg8j.cloudfront.net/assets/reposwarm-cli/latest/${BINARY}"
+# Fallback: GitHub releases
+GH_URL="https://github.com/${REPO}/releases/latest/download/${BINARY}"
+
+echo "Installing reposwarm (${OS}/${ARCH})..."
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-curl -fsSL "$URL" -o "$TMP/reposwarm"
+if curl -fsSL "$CDN_URL" -o "$TMP/reposwarm" 2>/dev/null; then
+  echo "Downloaded from CDN"
+elif curl -fsSL "$GH_URL" -o "$TMP/reposwarm" 2>/dev/null; then
+  echo "Downloaded from GitHub"
+else
+  echo "Error: failed to download binary. Check https://github.com/${REPO}/releases"
+  exit 1
+fi
+
 chmod +x "$TMP/reposwarm"
 
 if [ -w "$INSTALL_DIR" ]; then

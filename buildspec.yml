@@ -1,0 +1,66 @@
+version: 0.2
+
+env:
+  secrets-manager:
+    GITHUB_TOKEN: "reposwarm-cli/github-token"
+
+phases:
+  install:
+    commands:
+      - echo "Installing Go 1.24..."
+      - curl -fsSL https://go.dev/dl/go1.24.4.linux-arm64.tar.gz | tar -C /usr/local -xz
+      - export PATH=$PATH:/usr/local/go/bin
+      - go version
+      - echo "Installing gh CLI..."
+      - curl -fsSL https://github.com/cli/cli/releases/download/v2.67.0/gh_2.67.0_linux_arm64.tar.gz | tar -xz
+      - cp gh_2.67.0_linux_arm64/bin/gh /usr/local/bin/
+      - gh --version
+
+  pre_build:
+    commands:
+      - export PATH=$PATH:/usr/local/go/bin
+      - cd $CODEBUILD_SRC_DIR
+      - echo "Running tests..."
+      - go vet ./...
+      - go test ./... -count=1
+
+  build:
+    commands:
+      - export PATH=$PATH:/usr/local/go/bin
+      - cd $CODEBUILD_SRC_DIR
+      - export VERSION=$(grep 'var version' cmd/reposwarm/main.go | grep -oP '"[^"]+"' | tr -d '"')
+      - echo "Building v${VERSION} — 4 platform targets..."
+      - mkdir -p dist
+      - GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/reposwarm-darwin-arm64 ./cmd/reposwarm
+      - GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/reposwarm-darwin-amd64 ./cmd/reposwarm
+      - GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/reposwarm-linux-arm64 ./cmd/reposwarm
+      - GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/reposwarm-linux-amd64 ./cmd/reposwarm
+      - ls -lh dist/
+
+  post_build:
+    commands:
+      - cd $CODEBUILD_SRC_DIR
+      - export VERSION=$(grep 'var version' cmd/reposwarm/main.go | grep -oP '"[^"]+"' | tr -d '"')
+      - echo "Uploading binaries to S3..."
+      - aws s3 sync dist/ s3://bedlam-assets-1770361238/assets/reposwarm-cli/v${VERSION}/ --region us-east-1
+      - aws s3 sync dist/ s3://bedlam-assets-1770361238/assets/reposwarm-cli/latest/ --region us-east-1
+      - echo "Creating GitHub release v${VERSION}..."
+      - echo "$GITHUB_TOKEN" | gh auth login --with-token
+      - |
+        gh release view "v${VERSION}" --repo loki-bedlam/reposwarm-cli 2>/dev/null && \
+          gh release delete "v${VERSION}" --repo loki-bedlam/reposwarm-cli --yes 2>/dev/null || true
+      - |
+        gh release create "v${VERSION}" \
+          dist/reposwarm-darwin-arm64 \
+          dist/reposwarm-darwin-amd64 \
+          dist/reposwarm-linux-arm64 \
+          dist/reposwarm-linux-amd64 \
+          --repo loki-bedlam/reposwarm-cli \
+          --title "v${VERSION}" \
+          --notes "Built by CodePipeline. Install: \`curl -fsSL https://raw.githubusercontent.com/loki-bedlam/reposwarm-cli/main/install.sh | sh\`"
+      - echo "Release v${VERSION} published"
+
+artifacts:
+  files:
+    - dist/*
+  discard-paths: no
