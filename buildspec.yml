@@ -8,17 +8,19 @@ phases:
   install:
     commands:
       - echo "Installing Go 1.24..."
-      - curl -fsSL https://go.dev/dl/go1.24.4.linux-arm64.tar.gz | tar -C /usr/local -xz
-      - export PATH=$PATH:/usr/local/go/bin
+      - curl -fsSL https://go.dev/dl/go1.24.4.linux-arm64.tar.gz -o /tmp/go.tar.gz
+      - rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tar.gz
+      - export PATH=/usr/local/go/bin:$PATH
       - go version
       - echo "Installing gh CLI..."
-      - curl -fsSL https://github.com/cli/cli/releases/download/v2.67.0/gh_2.67.0_linux_arm64.tar.gz | tar -xz
-      - cp gh_2.67.0_linux_arm64/bin/gh /usr/local/bin/
+      - curl -fsSL https://github.com/cli/cli/releases/download/v2.67.0/gh_2.67.0_linux_arm64.tar.gz -o /tmp/gh.tar.gz
+      - tar -xzf /tmp/gh.tar.gz -C /tmp
+      - cp /tmp/gh_2.67.0_linux_arm64/bin/gh /usr/local/bin/
       - gh --version
 
   pre_build:
     commands:
-      - export PATH=$PATH:/usr/local/go/bin
+      - export PATH=/usr/local/go/bin:$PATH
       - cd $CODEBUILD_SRC_DIR
       - echo "Running tests..."
       - go vet ./...
@@ -26,7 +28,7 @@ phases:
 
   build:
     commands:
-      - export PATH=$PATH:/usr/local/go/bin
+      - export PATH=/usr/local/go/bin:$PATH
       - cd $CODEBUILD_SRC_DIR
       - export VERSION=$(grep 'var version' cmd/reposwarm/main.go | grep -oP '"[^"]+"' | tr -d '"')
       - echo "Building v${VERSION} — 4 platform targets..."
@@ -46,9 +48,7 @@ phases:
       - aws s3 sync dist/ s3://bedlam-assets-1770361238/assets/reposwarm-cli/latest/ --region us-east-1
       - echo "Creating GitHub release v${VERSION}..."
       - echo "$GITHUB_TOKEN" | gh auth login --with-token
-      - |
-        gh release view "v${VERSION}" --repo loki-bedlam/reposwarm-cli 2>/dev/null && \
-          gh release delete "v${VERSION}" --repo loki-bedlam/reposwarm-cli --yes 2>/dev/null || true
+      - gh release delete "v${VERSION}" --repo loki-bedlam/reposwarm-cli --yes 2>/dev/null || true
       - |
         gh release create "v${VERSION}" \
           dist/reposwarm-darwin-arm64 \
