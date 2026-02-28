@@ -2,7 +2,7 @@ version: 0.2
 
 env:
   secrets-manager:
-    GITHUB_TOKEN: "reposwarm-cli/github-token"
+    GH_RELEASE_TOKEN: "reposwarm-cli/github-token"
 
 phases:
   install:
@@ -47,7 +47,7 @@ phases:
       - aws s3 sync dist/ s3://bedlam-assets-1770361238/assets/reposwarm-cli/v${VERSION}/ --region us-east-1
       - aws s3 sync dist/ s3://bedlam-assets-1770361238/assets/reposwarm-cli/latest/ --region us-east-1
       - echo "Creating GitHub release v${VERSION}..."
-      - echo "$GITHUB_TOKEN" | gh auth login --with-token
+      - export GITHUB_TOKEN="$GH_RELEASE_TOKEN"
       - gh release delete "v${VERSION}" --repo loki-bedlam/reposwarm-cli --yes 2>/dev/null || true
       - |
         gh release create "v${VERSION}" \
@@ -58,7 +58,7 @@ phases:
           --repo loki-bedlam/reposwarm-cli \
           --title "v${VERSION}" \
           --notes "Built by CodePipeline. Install: \`curl -fsSL https://raw.githubusercontent.com/loki-bedlam/reposwarm-cli/main/install.sh | sh\`"
-      - echo "Release v${VERSION} published"
+      - echo "✅ Release v${VERSION} published"
 
 artifacts:
   files:
