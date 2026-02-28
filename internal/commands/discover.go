@@ -1,0 +1,42 @@
+package commands
+
+import (
+	"fmt"
+
+	"github.com/loki-bedlam/reposwarm-cli/internal/api"
+	"github.com/loki-bedlam/reposwarm-cli/internal/output"
+	"github.com/spf13/cobra"
+)
+
+func newDiscoverCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "discover",
+		Short: "Auto-discover repositories from CodeCommit",
+		Long:  "Triggers server-side discovery of CodeCommit repositories and adds new ones to tracking.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := getClient()
+			if err != nil {
+				return err
+			}
+
+			var result api.DiscoverResult
+			if err := client.Post(ctx(), "/repos/discover", nil, &result); err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return output.JSON(result)
+			}
+
+			fmt.Println()
+			output.Successf("Discovered %s CodeCommit repos", output.Bold(fmt.Sprint(result.Discovered)))
+			if result.Added > 0 {
+				output.Successf("Added %s new repos", output.Bold(fmt.Sprint(result.Added)))
+			} else {
+				output.Infof("All repos already tracked (%d skipped)", result.Skipped)
+			}
+			fmt.Println()
+			return nil
+		},
+	}
+}

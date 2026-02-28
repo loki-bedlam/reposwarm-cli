@@ -1,219 +1,145 @@
 # reposwarm-cli
 
-CLI for [RepoSwarm](https://github.com/loki-bedlam) — AI-powered multi-repo architecture discovery. Built for humans and agents.
+CLI for [RepoSwarm](https://github.com/loki-bedlam/reposwarm-ui) — AI-powered multi-repo architecture discovery.
+
+Written in Go. Single binary, zero dependencies, instant startup.
 
 ## Install
 
+**Download binary:**
 ```bash
-npm install -g reposwarm-cli
+# Linux ARM64
+curl -sL https://github.com/loki-bedlam/reposwarm-cli/releases/latest/download/reposwarm-linux-arm64 -o reposwarm
+chmod +x reposwarm
+sudo mv reposwarm /usr/local/bin/
+```
 
-# Or run directly
-npx reposwarm-cli discover
+**Build from source:**
+```bash
+git clone https://github.com/loki-bedlam/reposwarm-cli.git
+cd reposwarm-cli
+go build -o reposwarm ./cmd/reposwarm
 ```
 
 ## Quick Start
 
 ```bash
-# Discover all CodeCommit repos and add to tracking
-reposwarm discover
+# 1. Configure API connection
+reposwarm config init
 
-# List tracked repos
+# 2. List tracked repos
 reposwarm repos list
 
-# Investigate a single repo
+# 3. Browse investigation results
+reposwarm results list
+reposwarm results read is-odd
+
+# 4. Trigger new investigation
 reposwarm investigate my-repo
-
-# Investigate all enabled repos (auto-discovers if none exist)
-reposwarm investigate --all --discover
-
-# Agent-friendly JSON output
-reposwarm repos list --json
-reposwarm discover --json
 ```
 
 ## Commands
 
-### `reposwarm discover`
+### Configuration
+| Command | Description |
+|---------|-------------|
+| `reposwarm config init` | Interactive setup (API URL + token) |
+| `reposwarm config show` | Display current config |
+| `reposwarm config set <key> <value>` | Update a config value |
 
-Auto-discover repositories from CodeCommit.
+### Repositories
+| Command | Description |
+|---------|-------------|
+| `reposwarm repos list` | List all tracked repos |
+| `reposwarm repos add <name>` | Add a repo |
+| `reposwarm repos remove <name>` | Remove a repo |
+| `reposwarm repos enable <name>` | Enable for investigation |
+| `reposwarm repos disable <name>` | Disable from investigation |
+| `reposwarm discover` | Auto-discover CodeCommit repos |
 
-```bash
-reposwarm discover                    # Discover and add new repos
-reposwarm discover --dry-run          # Preview without adding
-reposwarm discover --force            # Re-add even if already tracked
-reposwarm discover --source codecommit
-```
+### Investigation
+| Command | Description |
+|---------|-------------|
+| `reposwarm investigate <repo>` | Investigate single repo |
+| `reposwarm investigate --all` | Investigate all enabled repos |
 
-### `reposwarm repos`
+### Workflows
+| Command | Description |
+|---------|-------------|
+| `reposwarm workflows list` | List recent workflows |
+| `reposwarm workflows status <id>` | Workflow details |
+| `reposwarm workflows terminate <id>` | Stop a workflow |
 
-Manage tracked repositories.
+### Results
+| Command | Description |
+|---------|-------------|
+| `reposwarm results list` | Repos with investigation results |
+| `reposwarm results show <repo>` | List sections for a repo |
+| `reposwarm results read <repo>` | Read ALL sections (one document) |
+| `reposwarm results read <repo> <section>` | Read single section |
+| `reposwarm results meta <repo> [section]` | Metadata only (no content) |
+| `reposwarm results export <repo> -o file.md` | Export to file |
+| `reposwarm results search <query>` | Search across all results |
 
-```bash
-reposwarm repos list                              # List all
-reposwarm repos list --source CodeCommit           # Filter by source
-reposwarm repos list --enabled                     # Only enabled
-reposwarm repos list --filter "mesh"               # Case-insensitive name search
-reposwarm repos add my-repo --url https://...      # Add manually
-reposwarm repos remove my-repo                     # Remove from tracking
-reposwarm repos enable my-repo                     # Enable for investigation
-reposwarm repos disable my-repo                    # Disable
-```
+## Global Flags
 
-### `reposwarm investigate`
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON (agent-friendly) |
+| `--api-url <url>` | Override API URL |
+| `--api-token <token>` | Override API token |
+| `--no-color` | Disable colored output |
+| `--verbose` | Show debug info |
 
-Trigger architecture investigation workflows.
+## Environment Variables
 
-```bash
-reposwarm investigate my-repo                      # Single repo
-reposwarm investigate --all                        # All enabled repos
-reposwarm investigate --all --discover             # Auto-discover first, then investigate all
-reposwarm investigate my-repo --model us.anthropic.claude-opus-4-6-v1
-reposwarm investigate --all --chunk-size 20 --parallel 5
-```
-
-Options:
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--model` | `us.anthropic.claude-sonnet-4-6` | Bedrock model ID |
-| `--chunk-size` | `10` | Files per analysis chunk |
-| `--parallel` | `3` | Parallel repo limit (daily) |
-| `--discover` | off | Auto-discover repos first |
-| `--temporal-url` | `http://temporal-alb-internal:8233` | Temporal HTTP API |
-| `--namespace` | `default` | Temporal namespace |
-| `--task-queue` | `investigate-task-queue` | Temporal task queue |
-
-### `reposwarm workflows`
-
-Manage investigation workflows.
-
-```bash
-reposwarm workflows list                           # List recent
-reposwarm workflows list --status Running          # Filter by status
-reposwarm workflows status <workflowId>            # Get details
-reposwarm workflows terminate <workflowId>         # Kill a workflow
-reposwarm workflows terminate <id> --reason "Too slow"
-```
-
-### `reposwarm config`
-
-Show current configuration.
-
-```bash
-reposwarm config
-reposwarm config --json
-```
-
-## Global Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--json` | off | JSON output (agent-friendly) |
-| `--region` | `us-east-1` | AWS region |
-| `--profile` | default | AWS CLI profile |
-| `--table` | `reposwarm-cache` | DynamoDB table name |
-
-## AWS IAM Permissions
-
-The CLI (or the ECS task role running the RepoSwarm UI) needs the following IAM permissions:
-
-### Required Policy
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "DynamoDBRepoTracking",
-      "Effect": "Allow",
-      "Action": [
-        "dynamodb:Scan",
-        "dynamodb:Query",
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:DescribeTable"
-      ],
-      "Resource": "arn:aws:dynamodb:*:*:table/reposwarm-cache"
-    },
-    {
-      "Sid": "CodeCommitDiscovery",
-      "Effect": "Allow",
-      "Action": [
-        "codecommit:ListRepositories",
-        "codecommit:GetRepository",
-        "codecommit:BatchGetRepositories"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
-
-### For ECS Task Roles (RepoSwarm UI)
-
-If running the RepoSwarm UI on ECS Fargate, attach the above policy to the **task role** (not the execution role). The task role is what the application code uses at runtime.
-
-Example with AWS CLI:
-```bash
-aws iam put-role-policy \
-  --role-name reposwarm-ui-task \
-  --policy-name reposwarm-access \
-  --policy-document file://policy.json
-```
-
-### Optional: GitHub Discovery (Future)
-
-When GitHub discovery is added, you'll also need a GitHub personal access token with `repo` scope. Configure via:
-```bash
-export GITHUB_TOKEN=ghp_...
-# or
-reposwarm config set github.token ghp_...
-```
+| Variable | Description |
+|----------|-------------|
+| `REPOSWARM_API_URL` | API server URL |
+| `REPOSWARM_API_TOKEN` | Bearer token for authentication |
 
 ## Agent Usage
 
-The `--json` flag on every command makes this CLI agent-friendly:
+All commands support `--json` for machine-readable output:
 
 ```bash
-# Agent discovers repos and gets structured output
-REPOS=$(reposwarm discover --json)
+# Get repos as JSON array
+reposwarm repos list --json | jq '.[].name'
 
-# Agent triggers investigation and captures workflow ID
-RESULT=$(reposwarm investigate my-repo --json)
-WORKFLOW_ID=$(echo $RESULT | jq -r '.workflowId')
+# Get investigation results as JSON
+reposwarm results read is-odd hl_overview --json | jq '.content'
 
-# Agent monitors workflow
-reposwarm workflows status $WORKFLOW_ID --json
+# Trigger and get workflow ID
+reposwarm investigate my-repo --json | jq '.workflowId'
 ```
 
-All errors are also JSON when `--json` is set:
+## Config File
+
+Stored at `~/.reposwarm/config.json`:
+
 ```json
 {
-  "error": "Discovery failed",
-  "details": "..."
+  "apiUrl": "https://your-api.example.com/v1",
+  "apiToken": "your-bearer-token",
+  "region": "us-east-1",
+  "defaultModel": "us.anthropic.claude-sonnet-4-6",
+  "chunkSize": 10,
+  "outputFormat": "pretty"
 }
 ```
 
-## Development
+## Shell Completions
 
 ```bash
-git clone https://github.com/loki-bedlam/reposwarm-cli
-cd reposwarm-cli
-npm install
-npm run type-check     # TypeScript validation
-npm test               # Run tests
-npm run dev -- discover  # Run locally via tsx
-npm run build          # Compile to dist/
+# Bash
+reposwarm completion bash >> ~/.bashrc
+
+# Zsh
+reposwarm completion zsh >> ~/.zshrc
+
+# Fish
+reposwarm completion fish > ~/.config/fish/completions/reposwarm.fish
 ```
-
-## Tech Stack
-
-- **TypeScript** + Node.js 24
-- **Commander.js** — CLI framework
-- **AWS SDK v3** — CodeCommit + DynamoDB
-- **Chalk** — Terminal colors
-- **Vitest** — Testing
 
 ## License
 
