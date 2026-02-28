@@ -75,6 +75,9 @@ Get started:
 	// Prompts
 	root.AddCommand(newPromptsCmd())
 
+	// Bootstrap
+	root.AddCommand(newNewCmd())
+
 	// Server
 	root.AddCommand(newServerConfigCmd())
 
