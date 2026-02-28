@@ -29,11 +29,12 @@ func NewRootCmd(version string) *cobra.Command {
 Discover repositories, trigger investigations, browse results, and manage prompts.
 
 Get started:
-  reposwarm config init        Set up API connection
-  reposwarm status             Check connection and services
-  reposwarm repos list         List tracked repositories
-  reposwarm results list       Browse investigation results
-  reposwarm prompts list       View investigation prompts`,
+  reposwarm new                    Bootstrap a new local installation
+  reposwarm config init            Set up API connection
+  reposwarm status                 Check connection and services
+  reposwarm doctor                 Diagnose installation health
+  reposwarm repos list             List tracked repositories
+  reposwarm results list           Browse investigation results`,
 		Version: version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if flagNoColor {
@@ -55,28 +56,29 @@ Get started:
 	root.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
 	root.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Show debug info")
 
-	// Core
+	// Setup & diagnostics
+	root.AddCommand(newNewCmd())
+	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newConfigCmd())
+	root.AddCommand(newUpgradeCmd(version))
 
 	// Repos
 	root.AddCommand(newReposCmd())
 	root.AddCommand(newDiscoverCmd())
 
-	// Workflows
+	// Workflows & investigation
 	root.AddCommand(newWorkflowsCmd())
 	root.AddCommand(newInvestigateCmd())
 	root.AddCommand(newWatchCmd())
 
-	// Results
+	// Results & analysis
 	root.AddCommand(newResultsCmd())
 	root.AddCommand(newDiffCmd())
+	root.AddCommand(newReportCmd())
 
 	// Prompts
 	root.AddCommand(newPromptsCmd())
-
-	// Bootstrap
-	root.AddCommand(newNewCmd())
 
 	// Server
 	root.AddCommand(newServerConfigCmd())

@@ -590,3 +590,140 @@ func TestDiffCmd(t *testing.T) {
 		t.Errorf("repo1 = %v", result["repo1"])
 	}
 }
+
+func TestDoctorCmdRegistered(t *testing.T) {
+	root := NewRootCmd("test")
+	for _, c := range root.Commands() {
+		if c.Name() == "doctor" {
+			if !strings.Contains(c.Short, "Diagnose") {
+				t.Errorf("doctor short = %s", c.Short)
+			}
+			return
+		}
+	}
+	t.Error("doctor command not registered")
+}
+
+func TestReposShowCmd(t *testing.T) {
+	_, cleanup := testServer(t, map[string]any{
+		"GET /repos/is-odd": map[string]any{
+			"name": "is-odd", "source": "GitHub", "url": "https://github.com/jonschlinkert/is-odd",
+			"enabled": true, "hasDocs": true, "status": "active",
+		},
+	})
+	defer cleanup()
+
+	out, err := runCmd(t, "repos", "show", "is-odd", "--json")
+	if err != nil {
+		t.Fatalf("repos show: %v", err)
+	}
+
+	var repo map[string]any
+	json.Unmarshal([]byte(out), &repo)
+	if repo["name"] != "is-odd" {
+		t.Errorf("name = %v, want is-odd", repo["name"])
+	}
+}
+
+func TestUpgradeCmdJSON(t *testing.T) {
+	root := NewRootCmd("1.0.0")
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetArgs([]string{"upgrade", "--json"})
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	root.Execute()
+	w.Close()
+	os.Stdout = old
+
+	var captured bytes.Buffer
+	captured.ReadFrom(r)
+	out := captured.String()
+
+	if out != "" {
+		var result map[string]any
+		if err := json.Unmarshal([]byte(out), &result); err == nil {
+			if result["current"] != "1.0.0" {
+				t.Errorf("current = %v, want 1.0.0", result["current"])
+			}
+		}
+	}
+}
+
+func TestReportCmd(t *testing.T) {
+	_, cleanup := testServer(t, map[string]any{
+		"GET /wiki": map[string]any{
+			"repos": []map[string]any{
+				{"name": "repo1", "sectionCount": 2, "lastUpdated": "2026-01-01"},
+			},
+		},
+		"GET /wiki/repo1": map[string]any{
+			"repo":     "repo1",
+			"sections": []map[string]any{{"id": "overview", "label": "Overview", "createdAt": "2026-01-01"}},
+			"hasDocs":  true,
+		},
+		"GET /wiki/repo1/overview": map[string]any{
+			"repo": "repo1", "section": "overview",
+			"content": "# Overview\nTest content", "createdAt": "2026-01-01",
+		},
+	})
+	defer cleanup()
+
+	out, err := runCmd(t, "report", "repo1", "--json")
+	if err != nil {
+		t.Fatalf("report: %v", err)
+	}
+
+	var reports []map[string]any
+	if err := json.Unmarshal([]byte(out), &reports); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(reports) != 1 {
+		t.Errorf("got %d reports, want 1", len(reports))
+	}
+	if reports[0]["name"] != "repo1" {
+		t.Errorf("name = %v, want repo1", reports[0]["name"])
+	}
+}
+
+func TestNewCmdGuideOnly(t *testing.T) {
+	dir := t.TempDir()
+	out, err := runCmd(t, "new", "--guide-only", "--dir", dir, "--no-color")
+	if err != nil {
+		t.Fatalf("new --guide-only: %v", err)
+	}
+	_ = out
+
+	// Check files were created
+	if _, err := os.Stat(dir + "/INSTALL.md"); err != nil {
+		t.Error("INSTALL.md not created")
+	}
+	if _, err := os.Stat(dir + "/REPOSWARM_INSTALL.md"); err != nil {
+		t.Error("REPOSWARM_INSTALL.md not created")
+	}
+}
+
+func TestNewCmdJSON(t *testing.T) {
+	dir := t.TempDir()
+	out, err := runCmd(t, "new", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("new --json: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if result["installDir"] != dir {
+		t.Errorf("installDir = %v, want %s", result["installDir"], dir)
+	}
+	env, ok := result["environment"].(map[string]any)
+	if !ok {
+		t.Fatal("expected environment object")
+	}
+	if env["os"] == nil {
+		t.Error("expected os in environment")
+	}
+}

@@ -15,6 +15,7 @@ func newReposCmd() *cobra.Command {
 		Short: "Manage tracked repositories",
 	}
 	cmd.AddCommand(newReposListCmd())
+	cmd.AddCommand(newReposShowCmd())
 	cmd.AddCommand(newReposAddCmd())
 	cmd.AddCommand(newReposRemoveCmd())
 	cmd.AddCommand(newReposEnableCmd())
@@ -206,5 +207,40 @@ func repoToggle(enable bool) func(*cobra.Command, []string) error {
 		}
 		output.Successf("%s repository %s", action, args[0])
 		return nil
+	}
+}
+
+func newReposShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show <name>",
+		Short: "Show detailed info for a single repository",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := getClient()
+			if err != nil {
+				return err
+			}
+
+			var repo api.Repository
+			if err := client.Get(ctx(), "/repos/"+args[0], &repo); err != nil {
+				return err
+			}
+
+			if flagJSON {
+				return output.JSON(repo)
+			}
+
+			fmt.Printf("\n  %s\n\n", output.Bold("Repository: "+repo.Name))
+			fmt.Printf("  %s  %s\n", output.Dim("Source     "), repo.Source)
+			fmt.Printf("  %s  %s\n", output.Dim("URL        "), repo.URL)
+			fmt.Printf("  %s  %v\n", output.Dim("Enabled    "), repo.Enabled)
+			fmt.Printf("  %s  %v\n", output.Dim("Has Docs   "), repo.HasDocs)
+			fmt.Printf("  %s  %s\n", output.Dim("Status     "), repo.Status)
+			if repo.Description != "" {
+				fmt.Printf("  %s  %s\n", output.Dim("Description"), repo.Description)
+			}
+			fmt.Println()
+			return nil
+		},
 	}
 }
