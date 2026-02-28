@@ -11,12 +11,12 @@ ARCH=$(uname -m)
 case "$ARCH" in
   x86_64|amd64) ARCH="amd64" ;;
   aarch64|arm64) ARCH="arm64" ;;
-  *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+  *) echo "❌ Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
 case "$OS" in
   darwin|linux) ;;
-  *) echo "Unsupported OS: $OS"; exit 1 ;;
+  *) echo "❌ Unsupported OS: $OS"; exit 1 ;;
 esac
 
 BINARY="reposwarm-${OS}-${ARCH}"
@@ -26,17 +26,18 @@ CDN_URL="https://db22kd0yixg8j.cloudfront.net/assets/reposwarm-cli/latest/${BINA
 # Fallback: GitHub releases
 GH_URL="https://github.com/${REPO}/releases/latest/download/${BINARY}"
 
-echo "Installing reposwarm (${OS}/${ARCH})..."
+printf "Installing reposwarm (%s/%s)... " "$OS" "$ARCH"
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
 if curl -fsSL "$CDN_URL" -o "$TMP/reposwarm" 2>/dev/null; then
-  echo "Downloaded from CDN"
+  true
 elif curl -fsSL "$GH_URL" -o "$TMP/reposwarm" 2>/dev/null; then
-  echo "Downloaded from GitHub"
+  true
 else
-  echo "Error: failed to download binary. Check https://github.com/${REPO}/releases"
+  echo "failed"
+  echo "❌ Could not download binary. Check https://github.com/${REPO}/releases"
   exit 1
 fi
 
@@ -48,5 +49,20 @@ else
   sudo mv "$TMP/reposwarm" "$INSTALL_DIR/reposwarm"
 fi
 
-echo "✓ Installed to ${INSTALL_DIR}/reposwarm"
-reposwarm --version
+VERSION=$(reposwarm --version 2>/dev/null | awk '{print $NF}')
+
+echo "done"
+echo ""
+echo "  ✅ reposwarm ${VERSION} installed to ${INSTALL_DIR}/reposwarm"
+echo ""
+echo "  Get started:"
+echo "    reposwarm config init              Set up API connection"
+echo "    reposwarm status                   Check connection"
+echo "    reposwarm repos list               List tracked repositories"
+echo "    reposwarm discover                 Auto-discover CodeCommit repos"
+echo "    reposwarm results list             Browse investigation results"
+echo "    reposwarm investigate <repo>       Start an investigation"
+echo ""
+echo "  All commands support --json for agent/script consumption."
+echo "  Run 'reposwarm help' for the full command list."
+echo ""
