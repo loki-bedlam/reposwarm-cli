@@ -122,3 +122,31 @@ type ConfigResponse struct {
 	TokenLimit         int    `json:"tokenLimit"`
 	ScheduleExpression string `json:"scheduleExpression"`
 }
+
+// Prompt from GET /prompts.
+type Prompt struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+	Template    string `json:"template"`
+	Enabled     bool   `json:"enabled"`
+	Order       int    `json:"order"`
+	Version     int    `json:"version"`
+	Context     string `json:"context,omitempty"`
+	CreatedAt   string `json:"createdAt,omitempty"`
+	UpdatedAt   string `json:"updatedAt,omitempty"`
+}
+
+// PromptVersion from GET /prompts/:name/versions.
+type PromptVersion struct {
+	Version   int    `json:"version"`
+	Template  string `json:"template"`
+	CreatedAt string `json:"createdAt"`
+	Author    string `json:"author,omitempty"`
+}
+
+// PromptType from GET /prompts/types.
+type PromptType struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}

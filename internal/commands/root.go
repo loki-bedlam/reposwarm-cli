@@ -29,9 +29,11 @@ func NewRootCmd(version string) *cobra.Command {
 Discover repositories, trigger investigations, browse results, and manage prompts.
 
 Get started:
-  reposwarm config init     Set up API connection
-  reposwarm repos list      List tracked repositories
-  reposwarm results list    Browse investigation results`,
+  reposwarm config init        Set up API connection
+  reposwarm status             Check connection and services
+  reposwarm repos list         List tracked repositories
+  reposwarm results list       Browse investigation results
+  reposwarm prompts list       View investigation prompts`,
 		Version: version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if flagNoColor {
@@ -53,12 +55,28 @@ Get started:
 	root.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
 	root.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Show debug info")
 
+	// Core
+	root.AddCommand(newStatusCmd())
 	root.AddCommand(newConfigCmd())
+
+	// Repos
 	root.AddCommand(newReposCmd())
 	root.AddCommand(newDiscoverCmd())
+
+	// Workflows
 	root.AddCommand(newWorkflowsCmd())
 	root.AddCommand(newInvestigateCmd())
+	root.AddCommand(newWatchCmd())
+
+	// Results
 	root.AddCommand(newResultsCmd())
+	root.AddCommand(newDiffCmd())
+
+	// Prompts
+	root.AddCommand(newPromptsCmd())
+
+	// Server
+	root.AddCommand(newServerConfigCmd())
 
 	return root
 }
