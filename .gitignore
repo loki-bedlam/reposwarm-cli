@@ -1,7 +1,7 @@
-# Binary
-reposwarm
-reposwarm-*
-dist/
+# Binary (root only, not cmd/ source dir)
+/reposwarm
+/reposwarm-*
+/dist/
 
 # Go
 *.exe
