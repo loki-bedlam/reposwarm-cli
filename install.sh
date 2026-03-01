@@ -2,7 +2,7 @@
 set -e
 
 REPO="loki-bedlam/reposwarm-cli"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Detect OS and arch
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -38,11 +38,8 @@ fi
 
 chmod +x "$TMP/reposwarm"
 
-if [ -w "$INSTALL_DIR" ]; then
-  mv "$TMP/reposwarm" "$INSTALL_DIR/reposwarm"
-else
-  sudo mv "$TMP/reposwarm" "$INSTALL_DIR/reposwarm"
-fi
+mkdir -p "$INSTALL_DIR"
+mv "$TMP/reposwarm" "$INSTALL_DIR/reposwarm"
 
 VERSION=$(reposwarm --version 2>/dev/null | awk '{print $NF}')
 
@@ -59,5 +56,8 @@ echo "    reposwarm results list             Browse investigation results"
 echo "    reposwarm investigate <repo>       Start an investigation"
 echo ""
 echo "  All commands support --json for agent/script consumption."
-echo "  Run 'reposwarm help' for the full command list."
+echo "  Run 'reposwarm help' for the full command list.
+
+  Make sure ${INSTALL_DIR} is in your PATH:
+    export PATH="$HOME/.local/bin:$PATH""
 echo ""
