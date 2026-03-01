@@ -137,9 +137,7 @@ func getLatestRelease() (version, downloadURL string, err error) {
 		}
 	}
 
-	// Fallback to CDN
-	cdnURL := fmt.Sprintf("https://db22kd0yixg8j.cloudfront.net/assets/reposwarm-cli/latest/%s", binaryName)
-	return version, cdnURL, nil
+	return version, "", fmt.Errorf("no binary found for %s in release assets", binaryName)
 }
 
 func downloadBinary(url string) (string, error) {

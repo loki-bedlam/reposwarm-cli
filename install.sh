@@ -21,9 +21,6 @@ esac
 
 BINARY="reposwarm-${OS}-${ARCH}"
 
-# Primary: CloudFront (latest build from CodePipeline)
-CDN_URL="https://db22kd0yixg8j.cloudfront.net/assets/reposwarm-cli/latest/${BINARY}"
-# Fallback: GitHub releases
 GH_URL="https://github.com/${REPO}/releases/latest/download/${BINARY}"
 
 printf "Installing reposwarm (%s/%s)... " "$OS" "$ARCH"
@@ -31,9 +28,7 @@ printf "Installing reposwarm (%s/%s)... " "$OS" "$ARCH"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
-if curl -fsSL "$CDN_URL" -o "$TMP/reposwarm" 2>/dev/null; then
-  true
-elif curl -fsSL "$GH_URL" -o "$TMP/reposwarm" 2>/dev/null; then
+if curl -fsSL -L "$GH_URL" -o "$TMP/reposwarm" 2>/dev/null; then
   true
 else
   echo "failed"
