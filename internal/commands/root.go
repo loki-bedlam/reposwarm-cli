@@ -46,7 +46,7 @@ Get started:
 
 	root.Flags().BoolP("version", "v", false, "Print version")
 	root.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON")
-	root.PersistentFlags().BoolVar(&flagAgent, "agent", false, "Plain text output for agents/scripts")
+	root.PersistentFlags().BoolVar(&flagAgent, "for-agent", false, "Plain text output for agents/scripts")
 	root.PersistentFlags().StringVar(&flagAPIUrl, "api-url", "", "API server URL (overrides config)")
 	root.PersistentFlags().StringVar(&flagAPIToken, "api-token", "", "API bearer token (overrides config)")
 	root.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Show debug info")
