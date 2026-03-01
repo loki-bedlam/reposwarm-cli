@@ -156,3 +156,4 @@ GitHub → CodeBuild (Go 1.24, ARM64) → Tests → Cross-compile 4 targets → 
 ## License
 
 MIT
+# Auto-trigger test 19:29
