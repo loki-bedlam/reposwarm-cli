@@ -19,7 +19,8 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "upgrade",
+		Use:     "upgrade",
+		Aliases: []string{"update"},
 		Short: "Upgrade reposwarm CLI to the latest version",
 		Long: `Downloads and installs the latest version from GitHub releases.
 
