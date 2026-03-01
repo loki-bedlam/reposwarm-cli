@@ -23,6 +23,7 @@ type Formatter interface {
 	KeyValue(key, value string)
 	Success(msg string)
 	Error(msg string)
+	Finish()
 	Info(msg string)
 	Warning(msg string)
 	List(items []string)
@@ -278,3 +279,10 @@ func (f *HumanFormatter) Println(a ...any) {
 func (f *HumanFormatter) Printf(format string, a ...any) {
 	fmt.Fprintf(f.w, format, a...)
 }
+
+// Finish prints the agent hint at the end of human-mode output
+func (f *HumanFormatter) Finish() {
+	fmt.Fprintf(f.w, "\n  %s\n\n", Dim("Tip: add --for-agent to any command for agent-friendly output"))
+}
+
+func (f *AgentFormatter) Finish() {}

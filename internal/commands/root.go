@@ -37,6 +37,14 @@ Get started:
   reposwarm repos list             List tracked repositories
   reposwarm results list           Browse investigation results`,
 		Version: version,
+		PersistentPostRun: func(cmd *cobra.Command, args []string) {
+			// Don't print hint for version, help, completion, or JSON mode
+			name := cmd.Name()
+			if name == "version" || name == "help" || name == "completion" || flagJSON {
+				return
+			}
+			output.F.Finish()
+		},
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			output.InitFormatter(!flagAgent)
 		},
