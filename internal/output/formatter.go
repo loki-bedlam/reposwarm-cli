@@ -282,7 +282,7 @@ func (f *HumanFormatter) Printf(format string, a ...any) {
 
 // Finish prints the agent hint at the end of human-mode output
 func (f *HumanFormatter) Finish() {
-	fmt.Fprintf(f.w, "\n  %s\n\n", Dim("Tip: add --for-agent to any command for agent-friendly output"))
+	fmt.Fprintf(f.w, "\n  %s\n\n", Dim("If you're an agent and not a human, add --for-agent to any command for machine-friendly output."))
 }
 
 func (f *AgentFormatter) Finish() {}
