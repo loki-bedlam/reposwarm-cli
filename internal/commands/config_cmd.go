@@ -42,13 +42,13 @@ func newConfigInitCmd() *cobra.Command {
 				cfg.APIUrl = strings.TrimSpace(line)
 			}
 
-			fmt.Print("  API Token: ")
-			if line, _ := reader.ReadString('\n'); strings.TrimSpace(line) != "" {
+			for cfg.APIToken == "" {
+				fmt.Print("  API Token: ")
+				line, _ := reader.ReadString('\n')
 				cfg.APIToken = strings.TrimSpace(line)
-			}
-
-			if cfg.APIToken == "" {
-				return fmt.Errorf("API token is required")
+				if cfg.APIToken == "" {
+					F.Warning("API token is required — paste your token and press Enter")
+				}
 			}
 
 			F.Info(fmt.Sprintf("Testing connection to %s...", cfg.APIUrl))
