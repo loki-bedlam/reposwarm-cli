@@ -6,9 +6,8 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/loki-bedlam/reposwarm-cli/internal/output"
@@ -21,7 +20,7 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "upgrade",
 		Aliases: []string{"update"},
-		Short: "Upgrade reposwarm CLI to the latest version",
+		Short:   "Upgrade reposwarm CLI to the latest version",
 		Long: `Downloads and installs the latest version from GitHub releases.
 
 Examples:
@@ -33,7 +32,6 @@ Examples:
 				fmt.Printf("  Current version: %s\n", output.Cyan("v"+currentVersion))
 			}
 
-			// Check latest release on GitHub
 			latestVer, downloadURL, err := getLatestRelease()
 			if err != nil {
 				return fmt.Errorf("checking for updates: %w", err)
@@ -41,10 +39,10 @@ Examples:
 
 			if flagJSON {
 				return output.JSON(map[string]any{
-					"current":      currentVersion,
-					"latest":       latestVer,
-					"updateAvail":  latestVer != currentVersion,
-					"downloadUrl":  downloadURL,
+					"current":     currentVersion,
+					"latest":      latestVer,
+					"updateAvail": latestVer != currentVersion,
+					"downloadUrl": downloadURL,
 				})
 			}
 
@@ -61,7 +59,6 @@ Examples:
 				output.Infof("Upgrading v%s → v%s", currentVersion, latestVer)
 			}
 
-			// Download
 			fmt.Printf("  Downloading...")
 			tmpFile, err := downloadBinary(downloadURL)
 			if err != nil {
@@ -70,31 +67,23 @@ Examples:
 			defer os.Remove(tmpFile)
 			fmt.Printf(" done\n")
 
-			// Find current binary path
 			binPath, err := os.Executable()
 			if err != nil {
 				return fmt.Errorf("finding current binary: %w", err)
 			}
+			// Resolve symlinks
+			binPath, err = filepath.EvalSymlinks(binPath)
+			if err != nil {
+				return fmt.Errorf("resolving binary path: %w", err)
+			}
 
-			// Replace binary
 			fmt.Printf("  Installing to %s...", binPath)
-			if err := replaceBinary(tmpFile, binPath); err != nil {
+			if err := safeReplaceBinary(tmpFile, binPath); err != nil {
 				return fmt.Errorf("install failed: %w", err)
 			}
-			fmt.Printf(" done\n")
+			fmt.Printf(" done\n\n")
 
-			// Verify — run the NEW binary (not the current process)
-			// Small delay to let the OS release the old binary
-			time.Sleep(200 * time.Millisecond)
-			out, err := exec.Command(binPath, "--version").Output()
-			if err != nil {
-				// On macOS, self-replacement can cause signal:killed
-				// The install itself succeeded, just can't verify in-process
-				output.F.Success(fmt.Sprintf("Installed to %s — run 'reposwarm version' to verify", binPath))
-			} else {
-				output.F.Success(strings.TrimSpace(string(out)))
-			}
-
+			output.F.Success(fmt.Sprintf("reposwarm v%s installed — restart your shell or run 'reposwarm version' to verify", latestVer))
 			return nil
 		},
 	}
@@ -133,7 +122,6 @@ func getLatestRelease() (version, downloadURL string, err error) {
 		version = version[1:]
 	}
 
-	// Find binary for this platform
 	binaryName := fmt.Sprintf("reposwarm-%s-%s", runtime.GOOS, runtime.GOARCH)
 	for _, asset := range release.Assets {
 		if asset.Name == binaryName {
@@ -172,24 +160,43 @@ func downloadBinary(url string) (string, error) {
 	return tmp.Name(), nil
 }
 
-func replaceBinary(src, dst string) error {
-	// Read new binary
-	data, err := os.ReadFile(src)
+// safeReplaceBinary replaces the binary without corrupting the running process.
+// On macOS/Linux, a running binary can be renamed but not overwritten safely.
+// Strategy: rename old → write new → delete old.
+func safeReplaceBinary(src, dst string) error {
+	newData, err := os.ReadFile(src)
 	if err != nil {
 		return err
 	}
 
-	// Try direct write
-	if err := os.WriteFile(dst, data, 0755); err != nil {
-		// May need sudo — try rename approach
-		backup := dst + ".old"
-		os.Rename(dst, backup)
-		if err := os.WriteFile(dst, data, 0755); err != nil {
-			os.Rename(backup, dst) // rollback
-			return fmt.Errorf("cannot write to %s (try: sudo reposwarm upgrade)", dst)
+	dir := filepath.Dir(dst)
+	base := filepath.Base(dst)
+	oldPath := filepath.Join(dir, "."+base+".old")
+
+	// Remove any leftover from previous upgrade
+	os.Remove(oldPath)
+
+	// Rename running binary out of the way (safe on macOS/Linux)
+	if err := os.Rename(dst, oldPath); err != nil {
+		// Can't rename — try direct write as last resort
+		if err := os.WriteFile(dst, newData, 0755); err != nil {
+			return fmt.Errorf("cannot replace %s (try: sudo reposwarm upgrade): %w", dst, err)
 		}
-		os.Remove(backup)
+		return nil
 	}
+
+	// Write new binary to the original path
+	if err := os.WriteFile(dst, newData, 0755); err != nil {
+		// Rollback
+		os.Rename(oldPath, dst)
+		return fmt.Errorf("failed to write new binary: %w", err)
+	}
+
+	// Clean up old binary (best effort — may fail if still running, that's fine)
+	go func() {
+		time.Sleep(2 * time.Second)
+		os.Remove(oldPath)
+	}()
 
 	return nil
 }
