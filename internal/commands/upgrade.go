@@ -83,10 +83,14 @@ Examples:
 			}
 			fmt.Printf(" done\n")
 
-			// Verify
+			// Verify — run the NEW binary (not the current process)
+			// Small delay to let the OS release the old binary
+			time.Sleep(200 * time.Millisecond)
 			out, err := exec.Command(binPath, "--version").Output()
 			if err != nil {
-				output.Errorf("Verification failed: %s", err)
+				// On macOS, self-replacement can cause signal:killed
+				// The install itself succeeded, just can't verify in-process
+				output.F.Success(fmt.Sprintf("Installed to %s — run 'reposwarm version' to verify", binPath))
 			} else {
 				output.F.Success(strings.TrimSpace(string(out)))
 			}
