@@ -20,6 +20,7 @@ func newReposCmd() *cobra.Command {
 	cmd.AddCommand(newReposRemoveCmd())
 	cmd.AddCommand(newReposEnableCmd())
 	cmd.AddCommand(newReposDisableCmd())
+	cmd.AddCommand(newReposSyncCmd())
 	return cmd
 }
 
