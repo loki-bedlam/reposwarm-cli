@@ -87,12 +87,11 @@ func newResultsSectionsCmd() *cobra.Command {
 
 			F := output.F
 			F.Section(fmt.Sprintf("Results — %s (%d sections)", args[0], len(index.Sections)))
-			headers := []string{"Section", "Label", "Created"}
+			headers := []string{"Section", "Created"}
 			var rows [][]string
 			for _, s := range index.Sections {
 				rows = append(rows, []string{
-					F.SectionIcon(s.ID) + s.ID,
-					s.Label,
+					F.SectionIcon(s.Name()) + s.Name(),
 					s.CreatedAt,
 				})
 			}
@@ -162,8 +161,8 @@ Examples:
 			var allContent []api.WikiContent
 			for _, s := range index.Sections {
 				var content api.WikiContent
-				if err := client.Get(ctx(), "/wiki/"+repo+"/"+s.ID, &content); err != nil {
-					output.F.Error(fmt.Sprintf("Failed to read %s: %s", s.ID, err))
+				if err := client.Get(ctx(), "/wiki/"+repo+"/"+s.Name(), &content); err != nil {
+					output.F.Error(fmt.Sprintf("Failed to read %s: %s", s.Name(), err))
 					continue
 				}
 				allContent = append(allContent, content)
@@ -297,10 +296,17 @@ func newResultsExportCmd() *cobra.Command {
 
 			for _, s := range index.Sections {
 				var content api.WikiContent
-				if err := client.Get(ctx(), "/wiki/"+repo+"/"+s.ID, &content); err != nil {
+				if err := client.Get(ctx(), "/wiki/"+repo+"/"+s.Name(), &content); err != nil {
 					continue
 				}
-				sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n---\n\n", s.Label, content.Content))
+				label := s.Label
+				if label == "" {
+					label = s.StepName
+					if label == "" {
+						label = s.Name()
+					}
+				}
+				sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n---\n\n", label, content.Content))
 			}
 
 			if outputFile != "" {
@@ -353,14 +359,14 @@ func newResultsSearchCmd() *cobra.Command {
 				}
 				for _, s := range index.Sections {
 					var content api.WikiContent
-					if err := client.Get(ctx(), "/wiki/"+r.Name+"/"+s.ID, &content); err != nil {
+					if err := client.Get(ctx(), "/wiki/"+r.Name+"/"+s.Name(), &content); err != nil {
 						continue
 					}
 					for _, line := range strings.Split(content.Content, "\n") {
 						if strings.Contains(strings.ToLower(line), query) {
 							hits = append(hits, SearchHit{
 								Repo:    r.Name,
-								Section: s.ID,
+								Section: s.Name(),
 								Line:    strings.TrimSpace(line),
 							})
 						}

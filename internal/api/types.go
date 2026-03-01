@@ -91,9 +91,18 @@ type WikiReposResponse struct {
 // WikiSection from GET /wiki/:repo.
 type WikiSection struct {
 	ID        string `json:"id"`
+	StepName  string `json:"stepName"`
 	Label     string `json:"label"`
 	Timestamp int64  `json:"timestamp"`
 	CreatedAt string `json:"createdAt"`
+}
+
+// Name returns the section identifier (prefers ID, falls back to StepName).
+func (s WikiSection) Name() string {
+	if s.ID != "" {
+		return s.ID
+	}
+	return s.StepName
 }
 
 // WikiIndex from GET /wiki/:repo.
