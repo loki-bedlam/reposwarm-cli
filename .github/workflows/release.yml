@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Test
+        run: go test ./... -count=1
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep 'var version' cmd/reposwarm/main.go | grep -oP '"[^"]+"' | tr -d '"')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building v$VERSION"
+
+      - name: Build all targets
+        run: |
+          mkdir -p dist
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/reposwarm-darwin-arm64 ./cmd/reposwarm
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/reposwarm-darwin-amd64 ./cmd/reposwarm
+          GOOS=linux  GOARCH=arm64 go build -ldflags="-s -w" -o dist/reposwarm-linux-arm64 ./cmd/reposwarm
+          GOOS=linux  GOARCH=amd64 go build -ldflags="-s -w" -o dist/reposwarm-linux-amd64 ./cmd/reposwarm
+          ls -lh dist/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          gh release delete "v${VERSION}" --yes 2>/dev/null || true
+          gh release create "v${VERSION}" \
+            dist/reposwarm-darwin-arm64 \
+            dist/reposwarm-darwin-amd64 \
+            dist/reposwarm-linux-arm64 \
+            dist/reposwarm-linux-amd64 \
+            --title "v${VERSION}" \
+            --notes "Install: \`curl -fsSL https://raw.githubusercontent.com/loki-bedlam/reposwarm-cli/main/install.sh | sh\`"
+          echo "✅ Release v${VERSION} published"
