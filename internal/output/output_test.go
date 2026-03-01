@@ -80,3 +80,41 @@ func TestTableEmpty(t *testing.T) {
 		t.Error("empty table should show 'no results'")
 	}
 }
+
+func TestHumanFormatterFinishShowsAgentHint(t *testing.T) {
+	var buf bytes.Buffer
+	f := &HumanFormatter{w: &buf}
+	f.Finish()
+	out := buf.String()
+	if !strings.Contains(out, "--for-agent") {
+		t.Errorf("HumanFormatter.Finish() should mention --for-agent, got: %s", out)
+	}
+	if !strings.Contains(out, "agent and not a human") {
+		t.Errorf("HumanFormatter.Finish() should contain hint text, got: %s", out)
+	}
+}
+
+func TestAgentFormatterFinishIsEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	f := &AgentFormatter{w: &buf}
+	f.Finish()
+	if buf.Len() != 0 {
+		t.Errorf("AgentFormatter.Finish() should produce no output, got: %s", buf.String())
+	}
+}
+
+func TestForAgentFlagSuppressesHint(t *testing.T) {
+	// When InitFormatter(false) is called (agent mode), Finish should be no-op
+	InitFormatter(false)
+	var buf bytes.Buffer
+	// Swap the global formatter's writer
+	agent := F.(*AgentFormatter)
+	agent.w = &buf
+	F.Finish()
+	if buf.Len() != 0 {
+		t.Errorf("Agent mode Finish() should be silent, got: %s", buf.String())
+	}
+
+	// Restore
+	InitFormatter(true)
+}
