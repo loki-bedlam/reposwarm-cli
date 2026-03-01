@@ -275,57 +275,118 @@ func newResultsMetaCmd() *cobra.Command {
 
 func newResultsExportCmd() *cobra.Command {
 	var outputFile string
+	var outputDir string
+	var all bool
 
 	cmd := &cobra.Command{
-		Use:   "export <repo>",
-		Short: "Export full investigation as markdown",
-		Args:  cobra.ExactArgs(1),
+		Use:   "export [repo]",
+		Short: "Export investigation results as markdown",
+		Long: `Export investigation results to local markdown files.
+
+Single repo:
+  reposwarm results export bedlam-infra              # stdout
+  reposwarm results export bedlam-infra -o out.md    # specific file
+  reposwarm results export bedlam-infra -d ./docs    # writes docs/bedlam-infra.arch.md
+
+All repos:
+  reposwarm results export --all -d ./arch-docs      # exports all repos to directory`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := getClient()
 			if err != nil {
 				return err
 			}
 
+			if all {
+				if outputDir == "" {
+					outputDir = "."
+				}
+				return exportAllRepos(client, outputDir)
+			}
+
+			if len(args) == 0 {
+				return fmt.Errorf("provide a repo name or use --all")
+			}
+
 			repo := args[0]
-			var index api.WikiIndex
-			if err := client.Get(ctx(), "/wiki/"+repo, &index); err != nil {
+			md, sections, err := exportRepo(client, repo)
+			if err != nil {
 				return err
 			}
 
-			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("# %s — Architecture Investigation\n\n", repo))
-
-			for _, s := range index.Sections {
-				var content api.WikiContent
-				if err := client.Get(ctx(), "/wiki/"+repo+"/"+s.Name(), &content); err != nil {
-					continue
-				}
-				label := s.Label
-				if label == "" {
-					label = s.StepName
-					if label == "" {
-						label = s.Name()
-					}
-				}
-				sb.WriteString(fmt.Sprintf("## %s\n\n%s\n\n---\n\n", label, content.Content))
+			// Determine output path
+			dest := outputFile
+			if dest == "" && outputDir != "" {
+				dest = fmt.Sprintf("%s/%s.arch.md", outputDir, repo)
 			}
 
-			if outputFile != "" {
-				if err := os.WriteFile(outputFile, []byte(sb.String()), 0644); err != nil {
+			if dest != "" {
+				if outputDir != "" {
+					os.MkdirAll(outputDir, 0755)
+				}
+				if err := os.WriteFile(dest, []byte(md), 0644); err != nil {
 					return fmt.Errorf("writing file: %w", err)
 				}
-				output.F.Success(fmt.Sprintf("Exported %d sections to %s (%d bytes)",
-					len(index.Sections), outputFile, sb.Len()))
+				output.F.Success(fmt.Sprintf("Exported %d sections to %s (%d bytes)", sections, dest, len(md)))
 				return nil
 			}
 
-			fmt.Print(sb.String())
+			fmt.Print(md)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file path")
+	cmd.Flags().StringVarP(&outputDir, "dir", "d", "", "Output directory (writes <repo>.arch.md)")
+	cmd.Flags().BoolVar(&all, "all", false, "Export all repos")
 	return cmd
+}
+
+func exportRepo(client *api.Client, repo string) (string, int, error) {
+	var index api.WikiIndex
+	if err := client.Get(ctx(), "/wiki/"+repo, &index); err != nil {
+		return "", 0, err
+	}
+
+	var sb strings.Builder
+	for _, s := range index.Sections {
+		var content api.WikiContent
+		if err := client.Get(ctx(), "/wiki/"+repo+"/"+s.Name(), &content); err != nil {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("# %s\n%s\n", s.Name(), content.Content))
+	}
+
+	return sb.String(), len(index.Sections), nil
+}
+
+func exportAllRepos(client *api.Client, dir string) error {
+	var repoList api.WikiReposResponse
+	if err := client.Get(ctx(), "/wiki", &repoList); err != nil {
+		return err
+	}
+
+	os.MkdirAll(dir, 0755)
+
+	exported := 0
+	for _, r := range repoList.Repos {
+		md, sections, err := exportRepo(client, r.Name)
+		if err != nil {
+			output.F.Error(fmt.Sprintf("Failed to export %s: %s", r.Name, err))
+			continue
+		}
+		dest := fmt.Sprintf("%s/%s.arch.md", dir, r.Name)
+		if err := os.WriteFile(dest, []byte(md), 0644); err != nil {
+			output.F.Error(fmt.Sprintf("Failed to write %s: %s", dest, err))
+			continue
+		}
+		output.F.Success(fmt.Sprintf("%s (%d sections, %d bytes)", r.Name, sections, len(md)))
+		exported++
+	}
+
+	output.F.Println()
+	output.F.Success(fmt.Sprintf("Exported %d/%d repos to %s", exported, len(repoList.Repos), dir))
+	return nil
 }
 
 
