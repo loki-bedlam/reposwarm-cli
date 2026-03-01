@@ -20,14 +20,11 @@ go build -o reposwarm ./cmd/reposwarm
 ## Quick Start
 
 ```bash
-# Bootstrap a new local RepoSwarm installation
-reposwarm new
-
-# Or connect to an existing server
-reposwarm config init
-reposwarm doctor                  # Check everything is working
+reposwarm config init             # Connect to a RepoSwarm server
+reposwarm status                  # Check connection
 reposwarm repos list              # List tracked repos
-reposwarm results list            # Browse investigation results
+reposwarm investigate <repo>      # Run an investigation
+reposwarm results sections <repo> # Browse results
 ```
 
 ## Commands
@@ -35,13 +32,16 @@ reposwarm results list            # Browse investigation results
 ### Setup & Diagnostics
 | Command | Description |
 |---------|-------------|
-| `reposwarm new` | Bootstrap a new local installation (detects env, generates guides, optionally launches Claude Code/Codex) |
-| `reposwarm doctor` | Diagnose installation health (config, API, Temporal, DynamoDB, worker, tools, network) |
-| `reposwarm status` | Quick API health check with latency |
-| `reposwarm upgrade` | Self-update to latest version |
 | `reposwarm config init` | Interactive setup wizard |
 | `reposwarm config show` | Display current config |
 | `reposwarm config set <key> <value>` | Update config value |
+| `reposwarm config server` | View server-side config |
+| `reposwarm config server-set <key> <value>` | Update server config |
+| `reposwarm status` | Quick API health check with latency |
+| `reposwarm doctor` | Deep diagnosis (config, API, Temporal, DynamoDB, worker, network) |
+| `reposwarm new` | Bootstrap a new local installation |
+| `reposwarm version` | Print version (`-v` / `--version` also work) |
+| `reposwarm upgrade` | Self-update to latest version (`--force` to reinstall) |
 
 ### Repositories
 | Command | Description |
@@ -52,7 +52,7 @@ reposwarm results list            # Browse investigation results
 | `reposwarm repos remove <name>` | Remove a repo (`-y` skip confirm) |
 | `reposwarm repos enable <name>` | Enable for investigation |
 | `reposwarm repos disable <name>` | Disable from investigation |
-| `reposwarm discover` | Auto-discover CodeCommit repos |
+| `reposwarm repos discover` | Auto-discover CodeCommit repos |
 
 ### Investigation & Workflows
 | Command | Description |
@@ -61,53 +61,46 @@ reposwarm results list            # Browse investigation results
 | `reposwarm investigate --all` | Investigate all enabled repos (`--parallel`) |
 | `reposwarm workflows list` | List recent workflows (`--limit`) |
 | `reposwarm workflows status <id>` | Workflow details |
+| `reposwarm workflows progress` | Show investigation progress across repos |
+| `reposwarm workflows watch [id]` | Watch workflows in real-time (`--interval`) |
 | `reposwarm workflows terminate <id>` | Stop a workflow (`-y`, `--reason`) |
-| `reposwarm watch [id]` | Watch workflows in real-time (`--interval`) |
 
 ### Results & Analysis
 | Command | Description |
 |---------|-------------|
 | `reposwarm results list` | Repos with investigation results |
-| `reposwarm results show <repo>` | List sections for a repo |
+| `reposwarm results sections <repo>` | List sections for a repo |
 | `reposwarm results read <repo> [section]` | Read results (`--raw` for markdown) |
 | `reposwarm results meta <repo> [section]` | Metadata only |
 | `reposwarm results export <repo> -o file.md` | Export to file |
-| `reposwarm results search <query>` | Search across all results |
-| `reposwarm diff <repo1> <repo2> [section]` | Compare investigations |
-| `reposwarm report [repos...] -o file.md` | Consolidated report (`--sections`) |
+| `reposwarm results export --all -d ./docs` | Export all repos to directory |
+| `reposwarm results search <query>` | Search results (`--repo`, `--section`, `--max`) |
+| `reposwarm results audit` | Validate all repos have complete sections |
+| `reposwarm results diff <repo1> <repo2>` | Compare investigations |
+| `reposwarm results report [repos...] -o f.md` | Consolidated report (`--sections`) |
 
 ### Prompts
 | Command | Description |
 |---------|-------------|
-| `reposwarm prompts list` | List prompts (`--type`, `--enabled`) |
+| `reposwarm prompts list` | List prompts (derives from results if API returns empty) |
 | `reposwarm prompts show <name>` | Show template (`--raw`) |
 | `reposwarm prompts create <name>` | Create (`--type`, `--template-file`) |
 | `reposwarm prompts update <name>` | Update template/description |
 | `reposwarm prompts delete <name>` | Delete |
 | `reposwarm prompts toggle <name>` | Toggle enabled/disabled |
-| `reposwarm prompts order <name> <n>` | Set execution order |
-| `reposwarm prompts context <name> <text>` | Set context |
-| `reposwarm prompts versions <name>` | Version history |
-| `reposwarm prompts rollback <name> <ver>` | Rollback to version |
-| `reposwarm prompts types` | List prompt types |
-| `reposwarm prompts export -o file.json` | Export all |
-| `reposwarm prompts import file.json` | Import |
-
-### Server Configuration
-| Command | Description |
-|---------|-------------|
-| `reposwarm server-config show` | View server-side config |
-| `reposwarm server-config set <key> <value>` | Update server config |
 
 ## Global Flags
 
 | Flag | Description |
 |------|-------------|
-| `--json` | JSON output (agent-friendly) |
+| `--json` | JSON output (agent/script-friendly) |
+| `--human` | Rich output with colors and emojis |
 | `--api-url <url>` | Override API URL |
 | `--api-token <token>` | Override API token |
-| `--no-color` | Disable colors |
 | `--verbose` | Debug info |
+| `-v` / `--version` | Print version |
+
+Default output is plain text (agent-friendly). Use `--human` for rich terminal output.
 
 ## Environment Variables
 
@@ -122,38 +115,23 @@ Every command supports `--json`:
 
 ```bash
 reposwarm repos list --json | jq '.[].name'
-reposwarm results read is-odd --json | jq '.content'
-reposwarm new --json | jq '.environment'
+reposwarm results read my-repo --json | jq '.content'
 reposwarm doctor --json | jq '.checks[] | select(.status=="fail")'
 ```
 
 ## Development
 
 ```bash
-go test ./...           # 59 tests
-go vet ./...            # Lint
-go build ./cmd/reposwarm  # Build
-```
-
-## Architecture
-
-```
-cmd/reposwarm/          # Entrypoint
-internal/
-  api/                  # HTTP client + types
-  bootstrap/            # Environment detection + guide generation
-  commands/             # All cobra commands
-  config/               # Config file management
-  output/               # Table/JSON/color formatting
-docs/                   # Agent-friendly docs
+go test ./...              # Tests
+go vet ./...               # Lint
+go build ./cmd/reposwarm   # Build
 ```
 
 ## CI/CD
 
 CodePipeline (`reposwarm-cli-pipeline`):
-GitHub → CodeBuild (Go 1.24, ARM64) → Tests → Cross-compile 4 targets → S3 + GitHub Release
+GitHub push → CodeBuild (Go 1.24, ARM64) → Tests → Cross-compile 4 targets → GitHub Release
 
 ## License
 
 MIT
-# Auto-trigger test 19:29
