@@ -211,9 +211,9 @@ func TestDiscoverCmd(t *testing.T) {
 	})
 	defer cleanup()
 
-	out, err := runCmd(t, "discover")
+	out, err := runCmd(t, "repos", "discover")
 	if err != nil {
-		t.Fatalf("discover: %v", err)
+		t.Fatalf("repos discover: %v", err)
 	}
 	if !strings.Contains(out, "36") {
 		t.Errorf("output should mention 36 repos: %s", out)
@@ -228,9 +228,9 @@ func TestDiscoverCmdJSON(t *testing.T) {
 	})
 	defer cleanup()
 
-	out, err := runCmd(t, "discover", "--json")
+	out, err := runCmd(t, "repos", "discover", "--json")
 	if err != nil {
-		t.Fatalf("discover --json: %v", err)
+		t.Fatalf("repos discover --json: %v", err)
 	}
 
 	var result map[string]any
@@ -468,9 +468,9 @@ func TestServerConfigShowCmd(t *testing.T) {
 	})
 	defer cleanup()
 
-	out, err := runCmd(t, "server-config", "show")
+	out, err := runCmd(t, "config", "server")
 	if err != nil {
-		t.Fatalf("server-config show: %v", err)
+		t.Fatalf("config server: %v", err)
 	}
 	if !strings.Contains(out, "claude-sonnet") {
 		t.Errorf("output should contain model: %s", out)
@@ -579,9 +579,9 @@ func TestDiffCmd(t *testing.T) {
 	})
 	defer cleanup()
 
-	out, err := runCmd(t, "diff", "repo1", "repo2", "--json")
+	out, err := runCmd(t, "results", "diff", "repo1", "repo2", "--json")
 	if err != nil {
-		t.Fatalf("diff: %v", err)
+		t.Fatalf("results diff: %v", err)
 	}
 
 	var result map[string]any
@@ -671,9 +671,9 @@ func TestReportCmd(t *testing.T) {
 	})
 	defer cleanup()
 
-	out, err := runCmd(t, "report", "repo1", "--json")
+	out, err := runCmd(t, "results", "report", "repo1", "--json")
 	if err != nil {
-		t.Fatalf("report: %v", err)
+		t.Fatalf("results report: %v", err)
 	}
 
 	var reports []map[string]any

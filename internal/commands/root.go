@@ -69,54 +69,12 @@ Get started:
 	// Prompts
 	root.AddCommand(newPromptsCmd())
 
-	// Deprecated top-level aliases
-	root.AddCommand(deprecatedAlias("reposwarm repos discover", newDiscoverCmd()))
-	root.AddCommand(deprecatedAlias("reposwarm workflows watch", newWatchCmd()))
-	root.AddCommand(deprecatedAlias("reposwarm results diff", newDiffCmd()))
-	root.AddCommand(deprecatedAlias("reposwarm results report", newReportCmd()))
 
-	// Deprecated server-config parent alias
-	root.AddCommand(newServerConfigAliasCmd())
 
 	return root
 }
 
-// deprecatedAlias wraps a command to print a deprecation warning to stderr.
-func deprecatedAlias(newPath string, cmd *cobra.Command) *cobra.Command {
-	origRunE := cmd.RunE
-	cmd.RunE = func(c *cobra.Command, args []string) error {
-		fmt.Fprintf(os.Stderr, "Warning: '%s' is deprecated, use '%s' instead\n", c.CommandPath(), newPath)
-		return origRunE(c, args)
-	}
-	cmd.Hidden = true
-	return cmd
-}
 
-// newServerConfigAliasCmd creates the deprecated server-config parent with show/set aliases.
-func newServerConfigAliasCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:    "server-config",
-		Hidden: true,
-		Short:  "View or update server-side configuration (deprecated: use 'config server')",
-	}
-	showCmd := newConfigServerCmd()
-	showCmd.Use = "show"
-	origShowRunE := showCmd.RunE
-	showCmd.RunE = func(c *cobra.Command, args []string) error {
-		fmt.Fprintf(os.Stderr, "Warning: 'reposwarm server-config show' is deprecated, use 'reposwarm config server' instead\n")
-		return origShowRunE(c, args)
-	}
-	setCmd := newConfigServerSetCmd()
-	setCmd.Use = "set <key> <value>"
-	origSetRunE := setCmd.RunE
-	setCmd.RunE = func(c *cobra.Command, args []string) error {
-		fmt.Fprintf(os.Stderr, "Warning: 'reposwarm server-config set' is deprecated, use 'reposwarm config server-set' instead\n")
-		return origSetRunE(c, args)
-	}
-	cmd.AddCommand(showCmd)
-	cmd.AddCommand(setCmd)
-	return cmd
-}
 
 // getClient creates an API client from config + flag overrides.
 func getClient() (*api.Client, error) {
