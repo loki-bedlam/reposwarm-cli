@@ -18,8 +18,8 @@ func newDiffCmd() *cobra.Command {
 Shows sections present in one but not the other, and line count differences.
 
 Examples:
-  reposwarm diff is-odd meshmart-catalog
-  reposwarm diff is-odd meshmart-catalog hl_overview`,
+  reposwarm results diff is-odd meshmart-catalog
+  reposwarm results diff is-odd meshmart-catalog hl_overview`,
 		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := getClient()
@@ -30,7 +30,6 @@ Examples:
 			repo1, repo2 := args[0], args[1]
 
 			if len(args) == 3 {
-				// Compare specific section
 				section := args[2]
 				var c1, c2 api.WikiContent
 				if err := client.Get(ctx(), "/wiki/"+repo1+"/"+section, &c1); err != nil {
@@ -56,16 +55,18 @@ Examples:
 				lines1 := strings.Split(c1.Content, "\n")
 				lines2 := strings.Split(c2.Content, "\n")
 
-				fmt.Printf("\n  %s — %s\n\n", output.Bold("Diff"), output.Cyan(section))
-				fmt.Printf("  %s  %s (%d lines, %s)\n", output.Dim("A:"), repo1, len(lines1), c1.CreatedAt)
-				fmt.Printf("  %s  %s (%d lines, %s)\n", output.Dim("B:"), repo2, len(lines2), c2.CreatedAt)
+				F := output.F
+				F.Section("Diff — " + section)
+				F.KeyValue("A", fmt.Sprintf("%s (%d lines, %s)", repo1, len(lines1), c1.CreatedAt))
+				F.KeyValue("B", fmt.Sprintf("%s (%d lines, %s)", repo2, len(lines2), c2.CreatedAt))
+				F.Println()
 
 				if c1.Content == c2.Content {
-					fmt.Printf("\n  %s\n\n", output.Green("Sections are identical"))
+					F.Success("Sections are identical")
 				} else {
-					fmt.Printf("\n  %s (%d vs %d lines)\n\n",
-						output.Yellow("Sections differ"), len(lines1), len(lines2))
+					F.Info(fmt.Sprintf("Sections differ (%d vs %d lines)", len(lines1), len(lines2)))
 				}
+				F.Println()
 				return nil
 			}
 
@@ -90,19 +91,21 @@ Examples:
 			if flagJSON {
 				only1, only2, both := diffSets(set1, set2)
 				return output.JSON(map[string]any{
-					"repo1":    repo1,
-					"repo2":    repo2,
-					"only1":    only1,
-					"only2":    only2,
-					"shared":   both,
+					"repo1":     repo1,
+					"repo2":     repo2,
+					"only1":     only1,
+					"only2":     only2,
+					"shared":    both,
 					"sections1": len(idx1.Sections),
 					"sections2": len(idx2.Sections),
 				})
 			}
 
-			fmt.Printf("\n  %s\n\n", output.Bold("Investigation Comparison"))
-			fmt.Printf("  %s  %s (%d sections)\n", output.Dim("A:"), repo1, len(idx1.Sections))
-			fmt.Printf("  %s  %s (%d sections)\n\n", output.Dim("B:"), repo2, len(idx2.Sections))
+			F := output.F
+			F.Section("Investigation Comparison")
+			F.KeyValue("A", fmt.Sprintf("%s (%d sections)", repo1, len(idx1.Sections)))
+			F.KeyValue("B", fmt.Sprintf("%s (%d sections)", repo2, len(idx2.Sections)))
+			F.Println()
 
 			headers := []string{"Section", repo1, repo2}
 			var rows [][]string
@@ -116,17 +119,17 @@ Examples:
 			}
 
 			for s := range allSections {
-				a, b := "—", "—"
+				a, b := "-", "-"
 				if set1[s] {
-					a = output.Green("✓")
+					a = "yes"
 				}
 				if set2[s] {
-					b = output.Green("✓")
+					b = "yes"
 				}
 				rows = append(rows, []string{s, a, b})
 			}
-			output.Table(headers, rows)
-			fmt.Println()
+			F.Table(headers, rows)
+			F.Println()
 			return nil
 		},
 	}

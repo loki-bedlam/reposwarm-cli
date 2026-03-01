@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/loki-bedlam/reposwarm-cli/internal/output"
@@ -27,7 +28,7 @@ Examples:
   reposwarm upgrade --force   # Reinstall even if same version`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !flagJSON {
-				fmt.Printf("\n%s\n\n", output.Bold("🔄 RepoSwarm CLI Upgrade"))
+				output.F.Section("RepoSwarm CLI Upgrade")
 				fmt.Printf("  Current version: %s\n", output.Cyan("v"+currentVersion))
 			}
 
@@ -86,7 +87,7 @@ Examples:
 			if err != nil {
 				output.Errorf("Verification failed: %s", err)
 			} else {
-				fmt.Printf("\n  %s %s\n\n", output.Green("✅"), string(out))
+				output.F.Success(strings.TrimSpace(string(out)))
 			}
 
 			return nil

@@ -107,62 +107,42 @@ including completed, in-progress, and pending repositories.`,
 				})
 			}
 
-			// Pretty output
-			fmt.Println()
-			fmt.Printf("  %s\n", output.Bold("📊 Daily Investigation Progress"))
-			fmt.Printf("  %s  %s\n", output.Dim("Workflow"), daily.WorkflowID)
-			fmt.Printf("  %s  %s\n", output.Dim("Started "), daily.StartTime[:19])
-			fmt.Printf("  %s  %s\n", output.Dim("Elapsed "), elapsed(daily.StartTime))
-			fmt.Println()
-
 			pending := totalRepos - len(children)
-			pct := 0
-			if totalRepos > 0 {
-				pct = len(completed) * 100 / totalRepos
-			}
 
-			// Progress bar
-			barWidth := 30
-			filled := barWidth * len(completed) / totalRepos
-			bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-			fmt.Printf("  %s %d%% (%d/%d)\n", bar, pct, len(completed), totalRepos)
-			fmt.Println()
-
-			fmt.Printf("  %s %-3d  %s %-3d  %s %-3d  %s %-3d\n",
-				output.Green("✅"), len(completed),
-				"🔄", len(running),
-				output.Error("❌"), len(failed),
-				output.Dim("⏳"), pending,
-			)
-			fmt.Println()
+			output.F.Section("Daily Investigation Progress")
+			output.F.KeyValue("Workflow", daily.WorkflowID)
+			output.F.KeyValue("Started", daily.StartTime[:19])
+			output.F.KeyValue("Elapsed", elapsed(daily.StartTime))
+			output.F.Progress(len(completed), totalRepos)
+			output.F.Println()
+			output.F.Printf("Completed: %-3d  Running: %-3d  Failed: %-3d  Pending: %-3d\n",
+				len(completed), len(running), len(failed), pending)
+			output.F.Println()
 
 			if len(completed) > 0 {
-				fmt.Printf("  %s\n", output.Dim("── Completed ──"))
+				output.F.Section("Completed")
 				for _, w := range completed {
-					fmt.Printf("  ✅ %-35s %s\n", repoName(w.WorkflowID), duration(w))
+					output.F.Printf("  %-35s %s\n", repoName(w.WorkflowID), duration(w))
 				}
-				fmt.Println()
 			}
 
 			if len(running) > 0 {
-				fmt.Printf("  %s\n", output.Dim("── In Progress ──"))
+				output.F.Section("In Progress")
 				for _, w := range running {
-					fmt.Printf("  🔄 %-35s %s elapsed\n", repoName(w.WorkflowID), elapsed(w.StartTime))
+					output.F.Printf("  %-35s %s elapsed\n", repoName(w.WorkflowID), elapsed(w.StartTime))
 				}
-				fmt.Println()
 			}
 
 			if len(failed) > 0 {
-				fmt.Printf("  %s\n", output.Dim("── Failed ──"))
+				output.F.Section("Failed")
 				for _, w := range failed {
-					fmt.Printf("  ❌ %-35s %s\n", repoName(w.WorkflowID), duration(w))
+					output.F.Printf("  %-35s %s\n", repoName(w.WorkflowID), duration(w))
 				}
-				fmt.Println()
 			}
 
 			if pending > 0 {
-				fmt.Printf("  %s %d repos waiting to start\n", output.Dim("⏳"), pending)
-				fmt.Println()
+				output.F.Println()
+				output.F.Printf("%d repos waiting to start\n", pending)
 			}
 
 			return nil

@@ -19,6 +19,7 @@ func newWorkflowsCmd() *cobra.Command {
 	cmd.AddCommand(newWorkflowsStatusCmd())
 	cmd.AddCommand(newWorkflowsTerminateCmd())
 	cmd.AddCommand(newWorkflowsProgressCmd())
+	cmd.AddCommand(newWatchCmd())
 	return cmd
 }
 
@@ -44,7 +45,8 @@ func newWorkflowsListCmd() *cobra.Command {
 				return output.JSON(result.Executions)
 			}
 
-			fmt.Printf("\n  %s (%d workflows)\n\n", output.Bold("Workflows"), len(result.Executions))
+			F := output.F
+			F.Section(fmt.Sprintf("Workflows (%d workflows)", len(result.Executions)))
 			headers := []string{"Workflow ID", "Status", "Type", "Started"}
 			var rows [][]string
 			for _, w := range result.Executions {
@@ -54,13 +56,13 @@ func newWorkflowsListCmd() *cobra.Command {
 				}
 				rows = append(rows, []string{
 					wfID,
-					output.StatusColor(w.Status),
+					F.StatusText(w.Status),
 					w.Type,
 					w.StartTime,
 				})
 			}
-			output.Table(headers, rows)
-			fmt.Println()
+			F.Table(headers, rows)
+			F.Println()
 			return nil
 		},
 	}
@@ -89,16 +91,17 @@ func newWorkflowsStatusCmd() *cobra.Command {
 				return output.JSON(wf)
 			}
 
-			fmt.Printf("\n  %s\n\n", output.Bold("Workflow Details"))
-			fmt.Printf("  %s  %s\n", output.Dim("ID       "), wf.WorkflowID)
-			fmt.Printf("  %s  %s\n", output.Dim("Run ID   "), wf.RunID)
-			fmt.Printf("  %s  %s\n", output.Dim("Status   "), output.StatusColor(wf.Status))
-			fmt.Printf("  %s  %s\n", output.Dim("Type     "), wf.Type)
-			fmt.Printf("  %s  %s\n", output.Dim("Started  "), wf.StartTime)
+			F := output.F
+			F.Section("Workflow Details")
+			F.KeyValue("ID", wf.WorkflowID)
+			F.KeyValue("Run ID", wf.RunID)
+			F.KeyValue("Status", F.StatusText(wf.Status))
+			F.KeyValue("Type", wf.Type)
+			F.KeyValue("Started", wf.StartTime)
 			if wf.CloseTime != "" {
-				fmt.Printf("  %s  %s\n", output.Dim("Closed   "), wf.CloseTime)
+				F.KeyValue("Closed", wf.CloseTime)
 			}
-			fmt.Println()
+			F.Println()
 			return nil
 		},
 	}
@@ -114,11 +117,11 @@ func newWorkflowsTerminateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !yes {
-				fmt.Printf("  Terminate workflow %s? [y/N] ", output.Bold(args[0]))
+				fmt.Printf("  Terminate workflow %s? [y/N] ", args[0])
 				var confirm string
 				fmt.Scanln(&confirm)
 				if strings.ToLower(confirm) != "y" {
-					output.Infof("Cancelled")
+					output.F.Info("Cancelled")
 					return nil
 				}
 			}
@@ -137,7 +140,7 @@ func newWorkflowsTerminateCmd() *cobra.Command {
 			if flagJSON {
 				return output.JSON(map[string]any{"workflowId": args[0], "terminated": true})
 			}
-			output.Successf("Terminated workflow %s", args[0])
+			output.F.Success(fmt.Sprintf("Terminated workflow %s", args[0]))
 			return nil
 		},
 	}

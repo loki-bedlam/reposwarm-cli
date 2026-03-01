@@ -71,7 +71,7 @@ Examples:
 			if len(missing) > 0 {
 				fmt.Printf("\n  %s Missing dependencies:\n", output.Yellow("⚠"))
 				for _, dep := range missing {
-					fmt.Printf("    %s %s\n", output.Red("✗"), dep)
+					output.F.Printf("  %s: missing\n", dep)
 				}
 				fmt.Println()
 			}
@@ -188,7 +188,7 @@ func launchAgent(agent, dir string) error {
 	}
 
 	fmt.Printf("\n  %s Agent finished. Verify with: %s\n\n",
-		output.Bold("✅"), output.Cyan("reposwarm status"))
+		"Done!", "reposwarm status")
 	return nil
 }
 

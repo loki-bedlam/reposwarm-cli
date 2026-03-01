@@ -690,7 +690,7 @@ func TestReportCmd(t *testing.T) {
 
 func TestNewCmdGuideOnly(t *testing.T) {
 	dir := t.TempDir()
-	out, err := runCmd(t, "new", "--guide-only", "--dir", dir, "--no-color")
+	out, err := runCmd(t, "new", "--guide-only", "--dir", dir)
 	if err != nil {
 		t.Fatalf("new --guide-only: %v", err)
 	}

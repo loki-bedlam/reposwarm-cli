@@ -20,6 +20,8 @@ func newConfigCmd() *cobra.Command {
 	cmd.AddCommand(newConfigInitCmd())
 	cmd.AddCommand(newConfigShowCmd())
 	cmd.AddCommand(newConfigSetCmd())
+	cmd.AddCommand(newConfigServerCmd())
+	cmd.AddCommand(newConfigServerSetCmd())
 	return cmd
 }
 
@@ -32,7 +34,8 @@ func newConfigInitCmd() *cobra.Command {
 			cfg := config.DefaultConfig()
 			reader := bufio.NewReader(os.Stdin)
 
-			fmt.Printf("\n%s\n\n", output.Bold("RepoSwarm CLI Setup"))
+			F := output.F
+			F.Section("RepoSwarm CLI Setup")
 
 			fmt.Printf("  API URL [%s]: ", cfg.APIUrl)
 			if line, _ := reader.ReadString('\n'); strings.TrimSpace(line) != "" {
@@ -48,23 +51,22 @@ func newConfigInitCmd() *cobra.Command {
 				return fmt.Errorf("API token is required")
 			}
 
-			// Test connection
-			output.Infof("Testing connection to %s...", cfg.APIUrl)
+			F.Info(fmt.Sprintf("Testing connection to %s...", cfg.APIUrl))
 			client := api.New(cfg.APIUrl, cfg.APIToken)
 			health, err := client.Health(ctx())
 			if err != nil {
 				return fmt.Errorf("connection test failed: %w", err)
 			}
 
-			output.Successf("Connected to RepoSwarm API %s (%s)", health.Version, health.Status)
+			F.Success(fmt.Sprintf("Connected to RepoSwarm API %s (%s)", health.Version, health.Status))
 
 			if err := config.Save(cfg); err != nil {
 				return fmt.Errorf("saving config: %w", err)
 			}
 
 			path, _ := config.ConfigPath()
-			output.Successf("Config saved to %s", path)
-			fmt.Println()
+			F.Success(fmt.Sprintf("Config saved to %s", path))
+			F.Println()
 			return nil
 		},
 	}
@@ -92,14 +94,15 @@ func newConfigShowCmd() *cobra.Command {
 				return output.JSON(display)
 			}
 
-			fmt.Printf("\n%s\n\n", output.Bold("RepoSwarm CLI Configuration"))
-			fmt.Printf("  %s  %s\n", output.Dim("apiUrl       "), cfg.APIUrl)
-			fmt.Printf("  %s  %s\n", output.Dim("apiToken     "), config.MaskedToken(cfg.APIToken))
-			fmt.Printf("  %s  %s\n", output.Dim("region       "), cfg.Region)
-			fmt.Printf("  %s  %s\n", output.Dim("defaultModel "), cfg.DefaultModel)
-			fmt.Printf("  %s  %d\n", output.Dim("chunkSize    "), cfg.ChunkSize)
-			fmt.Printf("  %s  %s\n", output.Dim("outputFormat "), cfg.OutputFormat)
-			fmt.Println()
+			F := output.F
+			F.Section("RepoSwarm CLI Configuration")
+			F.KeyValue("apiUrl", cfg.APIUrl)
+			F.KeyValue("apiToken", config.MaskedToken(cfg.APIToken))
+			F.KeyValue("region", cfg.Region)
+			F.KeyValue("defaultModel", cfg.DefaultModel)
+			F.KeyValue("chunkSize", fmt.Sprint(cfg.ChunkSize))
+			F.KeyValue("outputFormat", cfg.OutputFormat)
+			F.Println()
 			return nil
 		},
 	}
@@ -124,7 +127,7 @@ func newConfigSetCmd() *cobra.Command {
 				return err
 			}
 
-			output.Successf("Set %s = %s", args[0], args[1])
+			output.F.Success(fmt.Sprintf("Set %s = %s", args[0], args[1]))
 			return nil
 		},
 	}

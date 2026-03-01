@@ -28,14 +28,13 @@ func newDiscoverCmd() *cobra.Command {
 				return output.JSON(result)
 			}
 
-			fmt.Println()
-			output.Successf("Discovered %s CodeCommit repos", output.Bold(fmt.Sprint(result.Discovered)))
+			F := output.F
+			F.Success(fmt.Sprintf("Discovered %d CodeCommit repos", result.Discovered))
 			if result.Added > 0 {
-				output.Successf("Added %s new repos", output.Bold(fmt.Sprint(result.Added)))
+				F.Success(fmt.Sprintf("Added %d new repos", result.Added))
 			} else {
-				output.Infof("All repos already tracked (%d skipped)", result.Skipped)
+				F.Info(fmt.Sprintf("All repos already tracked (%d skipped)", result.Skipped))
 			}
-			fmt.Println()
 			return nil
 		},
 	}

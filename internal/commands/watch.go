@@ -22,9 +22,9 @@ Without workflow-id: shows all running workflows.
 With workflow-id: watches a specific workflow until it finishes.
 
 Examples:
-  reposwarm watch                              # All running
-  reposwarm watch investigate-single-my-repo   # Specific workflow
-  reposwarm watch --interval 10                # Poll every 10s`,
+  reposwarm workflows watch                              # All running
+  reposwarm workflows watch investigate-single-my-repo   # Specific workflow
+  reposwarm workflows watch --interval 10                # Poll every 10s`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := getClient()
 			if err != nil {
@@ -43,26 +43,29 @@ Examples:
 }
 
 func watchSingle(client *api.Client, workflowID string, interval int) error {
-	fmt.Printf("\n  %s %s (Ctrl+C to stop)\n\n", output.Bold("Watching"), output.Cyan(workflowID))
+	F := output.F
+	F.Info(fmt.Sprintf("Watching %s (Ctrl+C to stop)", workflowID))
+	F.Println()
 
 	lastStatus := ""
 	for {
 		var wf api.WorkflowExecution
 		if err := client.Get(ctx(), "/workflows/"+workflowID, &wf); err != nil {
-			output.Errorf("Poll failed: %s", err)
+			F.Error(fmt.Sprintf("Poll failed: %s", err))
 			time.Sleep(time.Duration(interval) * time.Second)
 			continue
 		}
 
 		if wf.Status != lastStatus {
 			ts := time.Now().Format("15:04:05")
-			fmt.Printf("  %s  %s → %s\n", output.Dim(ts), wf.Type, output.StatusColor(wf.Status))
+			F.Printf("  %s  %s -> %s\n", ts, wf.Type, F.StatusText(wf.Status))
 			lastStatus = wf.Status
 		}
 
 		lower := strings.ToLower(wf.Status)
 		if lower == "completed" || lower == "failed" || lower == "terminated" || lower == "timed_out" || lower == "cancelled" {
-			fmt.Printf("\n  %s Workflow finished: %s\n\n", output.Bold("✓"), output.StatusColor(wf.Status))
+			F.Println()
+			F.Success(fmt.Sprintf("Workflow finished: %s", wf.Status))
 			return nil
 		}
 
@@ -71,12 +74,14 @@ func watchSingle(client *api.Client, workflowID string, interval int) error {
 }
 
 func watchAll(client *api.Client, interval int) error {
-	fmt.Printf("\n  %s (Ctrl+C to stop)\n\n", output.Bold("Watching running workflows"))
+	F := output.F
+	F.Info("Watching running workflows (Ctrl+C to stop)")
+	F.Println()
 
 	for {
 		var result api.WorkflowsResponse
 		if err := client.Get(ctx(), "/workflows?pageSize=50", &result); err != nil {
-			output.Errorf("Poll failed: %s", err)
+			F.Error(fmt.Sprintf("Poll failed: %s", err))
 			time.Sleep(time.Duration(interval) * time.Second)
 			continue
 		}
@@ -90,15 +95,15 @@ func watchAll(client *api.Client, interval int) error {
 
 		ts := time.Now().Format("15:04:05")
 		if len(running) == 0 {
-			fmt.Printf("  %s  No running workflows\n", output.Dim(ts))
+			F.Printf("  %s  No running workflows\n", ts)
 		} else {
-			fmt.Printf("  %s  %d running:\n", output.Dim(ts), len(running))
+			F.Printf("  %s  %d running:\n", ts, len(running))
 			for _, w := range running {
 				id := w.WorkflowID
 				if len(id) > 60 {
 					id = id[:57] + "..."
 				}
-				fmt.Printf("           %s %s\n", output.Yellow("▸"), id)
+				F.Printf("           - %s\n", id)
 			}
 		}
 

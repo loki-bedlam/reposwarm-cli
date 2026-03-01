@@ -8,19 +8,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newServerConfigCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "server-config",
-		Short: "View or update server-side configuration",
-	}
-	cmd.AddCommand(newServerConfigShowCmd())
-	cmd.AddCommand(newServerConfigSetCmd())
-	return cmd
-}
-
-func newServerConfigShowCmd() *cobra.Command {
+func newConfigServerCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show",
+		Use:   "server",
 		Short: "Show server configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := getClient()
@@ -37,22 +27,23 @@ func newServerConfigShowCmd() *cobra.Command {
 				return output.JSON(cfg)
 			}
 
-			fmt.Printf("\n  %s\n\n", output.Bold("Server Configuration"))
-			fmt.Printf("  %s  %s\n", output.Dim("defaultModel      "), cfg.DefaultModel)
-			fmt.Printf("  %s  %d\n", output.Dim("chunkSize         "), cfg.ChunkSize)
-			fmt.Printf("  %s  %dms\n", output.Dim("sleepDuration     "), cfg.SleepDuration)
-			fmt.Printf("  %s  %d\n", output.Dim("parallelLimit     "), cfg.ParallelLimit)
-			fmt.Printf("  %s  %d\n", output.Dim("tokenLimit        "), cfg.TokenLimit)
-			fmt.Printf("  %s  %s\n", output.Dim("scheduleExpression"), cfg.ScheduleExpression)
-			fmt.Println()
+			F := output.F
+			F.Section("Server Configuration")
+			F.KeyValue("defaultModel", cfg.DefaultModel)
+			F.KeyValue("chunkSize", fmt.Sprint(cfg.ChunkSize))
+			F.KeyValue("sleepDuration", fmt.Sprintf("%dms", cfg.SleepDuration))
+			F.KeyValue("parallelLimit", fmt.Sprint(cfg.ParallelLimit))
+			F.KeyValue("tokenLimit", fmt.Sprint(cfg.TokenLimit))
+			F.KeyValue("scheduleExpression", cfg.ScheduleExpression)
+			F.Println()
 			return nil
 		},
 	}
 }
 
-func newServerConfigSetCmd() *cobra.Command {
+func newConfigServerSetCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "set <key> <value>",
+		Use:   "server-set <key> <value>",
 		Short: "Update a server configuration value",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -70,7 +61,7 @@ func newServerConfigSetCmd() *cobra.Command {
 			if flagJSON {
 				return output.JSON(map[string]any{"key": args[0], "value": args[1]})
 			}
-			output.Successf("Set server %s = %s", args[0], args[1])
+			output.F.Success(fmt.Sprintf("Set server %s = %s", args[0], args[1]))
 			return nil
 		},
 	}

@@ -38,7 +38,7 @@ func newDoctorCmd() *cobra.Command {
 			var checks []checkResult
 
 			if !flagJSON {
-				fmt.Printf("\n%s\n\n", output.Bold("🩺 RepoSwarm Doctor"))
+				output.F.Section("RepoSwarm Doctor")
 			}
 
 			// 1. Config file
@@ -67,14 +67,7 @@ func newDoctorCmd() *cobra.Command {
 			ok := countStatus(checks, "ok")
 			warn := countStatus(checks, "warn")
 			fail := countStatus(checks, "fail")
-			fmt.Println()
-			if fail == 0 && warn == 0 {
-				fmt.Printf("  %s All %d checks passed\n\n", output.Green("✅"), ok)
-			} else if fail == 0 {
-				fmt.Printf("  %s %d passed, %d warnings\n\n", output.Yellow("⚠️"), ok, warn)
-			} else {
-				fmt.Printf("  %s %d passed, %d warnings, %d failed\n\n", output.Red("❌"), ok, warn, fail)
-			}
+			output.F.CheckSummary(ok, warn, fail)
 			return nil
 		},
 	}
@@ -84,13 +77,7 @@ func printCheck(c checkResult) {
 	if flagJSON {
 		return
 	}
-	icon := output.Green("✓")
-	if c.Status == "warn" {
-		icon = output.Yellow("⚠")
-	} else if c.Status == "fail" {
-		icon = output.Red("✗")
-	}
-	fmt.Printf("  %s %s — %s\n", icon, c.Name, c.Message)
+	output.F.CheckResult(c.Name, c.Status, c.Message)
 }
 
 func checkConfig() []checkResult {

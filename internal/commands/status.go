@@ -30,7 +30,7 @@ func newStatusCmd() *cobra.Command {
 						"error":     err.Error(),
 					})
 				}
-				output.Errorf("Connection failed: %s", err)
+				output.F.Error(fmt.Sprintf("Connection failed: %s", err))
 				return nil
 			}
 
@@ -49,32 +49,33 @@ func newStatusCmd() *cobra.Command {
 				})
 			}
 
-			fmt.Printf("\n  %s\n\n", output.Bold("RepoSwarm Status"))
-			fmt.Printf("  %s  %s\n", output.Dim("API URL    "), cfg.APIUrl)
-			fmt.Printf("  %s  %s\n", output.Dim("Status     "), output.Green(health.Status))
-			fmt.Printf("  %s  %s\n", output.Dim("Version    "), health.Version)
-			fmt.Printf("  %s  %dms\n", output.Dim("Latency    "), latency.Milliseconds())
+			F := output.F
+			F.Section("RepoSwarm Status")
+			F.KeyValue("API URL", cfg.APIUrl)
+			F.KeyValue("Status", health.Status)
+			F.KeyValue("Version", health.Version)
+			F.KeyValue("Latency", fmt.Sprintf("%dms", latency.Milliseconds()))
 
-			fmt.Printf("\n  %s\n", output.Bold("Services:"))
-			svc := func(name string, connected bool) {
-				icon := output.Green("✓")
-				if !connected {
-					icon = output.Red("✗")
+			svcStatus := func(name string, connected bool) string {
+				if connected {
+					return "ok"
 				}
-				fmt.Printf("    %s %s\n", icon, name)
+				return "DISCONNECTED"
 			}
-			svc("Temporal", health.Temporal.Connected)
-			svc("DynamoDB", health.DynamoDB.Connected)
-			svc("Worker", health.Worker.Connected)
+
+			F.Println()
+			F.KeyValue("Temporal", svcStatus("Temporal", health.Temporal.Connected))
+			F.KeyValue("DynamoDB", svcStatus("DynamoDB", health.DynamoDB.Connected))
+			F.KeyValue("Worker", svcStatus("Worker", health.Worker.Connected))
 
 			if health.Temporal.Connected {
-				fmt.Printf("      %s  %s\n", output.Dim("namespace"), health.Temporal.Namespace)
-				fmt.Printf("      %s  %s\n", output.Dim("taskQueue"), health.Temporal.TaskQueue)
+				F.KeyValue("  namespace", health.Temporal.Namespace)
+				F.KeyValue("  taskQueue", health.Temporal.TaskQueue)
 			}
 			if health.Worker.Connected {
-				fmt.Printf("      %s  %d\n", output.Dim("workers  "), health.Worker.Count)
+				F.KeyValue("  workers", fmt.Sprint(health.Worker.Count))
 			}
-			fmt.Println()
+			F.Println()
 			return nil
 		},
 	}

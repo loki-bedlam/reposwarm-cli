@@ -20,6 +20,7 @@ func newReposCmd() *cobra.Command {
 	cmd.AddCommand(newReposRemoveCmd())
 	cmd.AddCommand(newReposEnableCmd())
 	cmd.AddCommand(newReposDisableCmd())
+	cmd.AddCommand(newDiscoverCmd())
 	return cmd
 }
 
@@ -41,7 +42,6 @@ func newReposListCmd() *cobra.Command {
 				return err
 			}
 
-			// Apply filters
 			var filtered []api.Repository
 			for _, r := range repos {
 				if source != "" && !strings.EqualFold(r.Source, source) {
@@ -63,22 +63,23 @@ func newReposListCmd() *cobra.Command {
 				return output.JSON(filtered)
 			}
 
-			fmt.Printf("\n  %s (%d repos)\n\n", output.Bold("Repositories"), len(filtered))
+			F := output.F
+			F.Section(fmt.Sprintf("Repositories (%d repos)", len(filtered)))
 			headers := []string{"Name", "Source", "Enabled", "Docs", "Status"}
 			var rows [][]string
 			for _, r := range filtered {
-				en := output.Green("✓")
+				en := "yes"
 				if !r.Enabled {
-					en = output.Dim("✗")
+					en = "no"
 				}
 				docs := ""
 				if r.HasDocs {
-					docs = output.Green("✓")
+					docs = "yes"
 				}
 				rows = append(rows, []string{r.Name, r.Source, en, docs, r.Status})
 			}
-			output.Table(headers, rows)
-			fmt.Println()
+			F.Table(headers, rows)
+			F.Println()
 			return nil
 		},
 	}
@@ -117,7 +118,7 @@ func newReposAddCmd() *cobra.Command {
 			if flagJSON {
 				return output.JSON(result)
 			}
-			output.Successf("Added repository %s", output.Bold(args[0]))
+			output.F.Success(fmt.Sprintf("Added repository %s", args[0]))
 			return nil
 		},
 	}
@@ -136,11 +137,11 @@ func newReposRemoveCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if !yes {
-				fmt.Printf("  Remove %s? [y/N] ", output.Bold(args[0]))
+				fmt.Printf("  Remove %s? [y/N] ", args[0])
 				var confirm string
 				fmt.Scanln(&confirm)
 				if strings.ToLower(confirm) != "y" {
-					output.Infof("Cancelled")
+					output.F.Info("Cancelled")
 					return nil
 				}
 			}
@@ -158,7 +159,7 @@ func newReposRemoveCmd() *cobra.Command {
 			if flagJSON {
 				return output.JSON(result)
 			}
-			output.Successf("Removed repository %s", args[0])
+			output.F.Success(fmt.Sprintf("Removed repository %s", args[0]))
 			return nil
 		},
 	}
@@ -205,7 +206,7 @@ func repoToggle(enable bool) func(*cobra.Command, []string) error {
 		if flagJSON {
 			return output.JSON(map[string]any{"name": args[0], "enabled": enable})
 		}
-		output.Successf("%s repository %s", action, args[0])
+		output.F.Success(fmt.Sprintf("%s repository %s", action, args[0]))
 		return nil
 	}
 }
@@ -230,16 +231,17 @@ func newReposShowCmd() *cobra.Command {
 				return output.JSON(repo)
 			}
 
-			fmt.Printf("\n  %s\n\n", output.Bold("Repository: "+repo.Name))
-			fmt.Printf("  %s  %s\n", output.Dim("Source     "), repo.Source)
-			fmt.Printf("  %s  %s\n", output.Dim("URL        "), repo.URL)
-			fmt.Printf("  %s  %v\n", output.Dim("Enabled    "), repo.Enabled)
-			fmt.Printf("  %s  %v\n", output.Dim("Has Docs   "), repo.HasDocs)
-			fmt.Printf("  %s  %s\n", output.Dim("Status     "), repo.Status)
+			F := output.F
+			F.Section("Repository: " + repo.Name)
+			F.KeyValue("Source", repo.Source)
+			F.KeyValue("URL", repo.URL)
+			F.KeyValue("Enabled", fmt.Sprint(repo.Enabled))
+			F.KeyValue("Has Docs", fmt.Sprint(repo.HasDocs))
+			F.KeyValue("Status", repo.Status)
 			if repo.Description != "" {
-				fmt.Printf("  %s  %s\n", output.Dim("Description"), repo.Description)
+				F.KeyValue("Description", repo.Description)
 			}
-			fmt.Println()
+			F.Println()
 			return nil
 		},
 	}

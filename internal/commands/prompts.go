@@ -78,9 +78,16 @@ func newPromptsListCmd() *cobra.Command {
 			headers := []string{"Name", "Type", "Enabled", "Order", "Version"}
 			var rows [][]string
 			for _, p := range filtered {
-				en := output.Green("✓")
+				en := "yes"
 				if !p.Enabled {
-					en = output.Dim("✗")
+					en = "no"
+				}
+				if output.IsHuman {
+					if p.Enabled {
+						en = output.Green("✓")
+					} else {
+						en = output.Dim("✗")
+					}
 				}
 				rows = append(rows, []string{
 					p.Name, p.Type, en,

@@ -14,9 +14,9 @@ import (
 
 var (
 	flagJSON     bool
+	flagHuman    bool
 	flagAPIUrl   string
 	flagAPIToken string
-	flagNoColor  bool
 	flagVerbose  bool
 )
 
@@ -37,23 +37,16 @@ Get started:
   reposwarm results list           Browse investigation results`,
 		Version: version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			if flagNoColor {
-				output.Bold = fmt.Sprint
-				output.Green = fmt.Sprint
-				output.Red = fmt.Sprint
-				output.Yellow = fmt.Sprint
-				output.Cyan = fmt.Sprint
-				output.Dim = fmt.Sprint
-			}
+			output.InitFormatter(flagHuman)
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 
-	root.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON (agent-friendly)")
+	root.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON")
+	root.PersistentFlags().BoolVar(&flagHuman, "human", false, "Rich output with colors and emojis")
 	root.PersistentFlags().StringVar(&flagAPIUrl, "api-url", "", "API server URL (overrides config)")
 	root.PersistentFlags().StringVar(&flagAPIToken, "api-token", "", "API bearer token (overrides config)")
-	root.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable colored output")
 	root.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Show debug info")
 
 	// Setup & diagnostics
@@ -63,27 +56,66 @@ Get started:
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newUpgradeCmd(version))
 
-	// Repos
+	// Repos (includes discover as subcommand)
 	root.AddCommand(newReposCmd())
-	root.AddCommand(newDiscoverCmd())
 
-	// Workflows & investigation
+	// Workflows (includes watch as subcommand)
 	root.AddCommand(newWorkflowsCmd())
 	root.AddCommand(newInvestigateCmd())
-	root.AddCommand(newWatchCmd())
 
-	// Results & analysis
+	// Results (includes diff, report as subcommands; show→sections)
 	root.AddCommand(newResultsCmd())
-	root.AddCommand(newDiffCmd())
-	root.AddCommand(newReportCmd())
 
 	// Prompts
 	root.AddCommand(newPromptsCmd())
 
-	// Server
-	root.AddCommand(newServerConfigCmd())
+	// Deprecated top-level aliases
+	root.AddCommand(deprecatedAlias("reposwarm repos discover", newDiscoverCmd()))
+	root.AddCommand(deprecatedAlias("reposwarm workflows watch", newWatchCmd()))
+	root.AddCommand(deprecatedAlias("reposwarm results diff", newDiffCmd()))
+	root.AddCommand(deprecatedAlias("reposwarm results report", newReportCmd()))
+
+	// Deprecated server-config parent alias
+	root.AddCommand(newServerConfigAliasCmd())
 
 	return root
+}
+
+// deprecatedAlias wraps a command to print a deprecation warning to stderr.
+func deprecatedAlias(newPath string, cmd *cobra.Command) *cobra.Command {
+	origRunE := cmd.RunE
+	cmd.RunE = func(c *cobra.Command, args []string) error {
+		fmt.Fprintf(os.Stderr, "Warning: '%s' is deprecated, use '%s' instead\n", c.CommandPath(), newPath)
+		return origRunE(c, args)
+	}
+	cmd.Hidden = true
+	return cmd
+}
+
+// newServerConfigAliasCmd creates the deprecated server-config parent with show/set aliases.
+func newServerConfigAliasCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:    "server-config",
+		Hidden: true,
+		Short:  "View or update server-side configuration (deprecated: use 'config server')",
+	}
+	showCmd := newConfigServerCmd()
+	showCmd.Use = "show"
+	origShowRunE := showCmd.RunE
+	showCmd.RunE = func(c *cobra.Command, args []string) error {
+		fmt.Fprintf(os.Stderr, "Warning: 'reposwarm server-config show' is deprecated, use 'reposwarm config server' instead\n")
+		return origShowRunE(c, args)
+	}
+	setCmd := newConfigServerSetCmd()
+	setCmd.Use = "set <key> <value>"
+	origSetRunE := setCmd.RunE
+	setCmd.RunE = func(c *cobra.Command, args []string) error {
+		fmt.Fprintf(os.Stderr, "Warning: 'reposwarm server-config set' is deprecated, use 'reposwarm config server-set' instead\n")
+		return origSetRunE(c, args)
+	}
+	cmd.AddCommand(showCmd)
+	cmd.AddCommand(setCmd)
+	return cmd
 }
 
 // getClient creates an API client from config + flag overrides.
@@ -121,7 +153,7 @@ func ctx() context.Context {
 func Execute(version string) {
 	root := NewRootCmd(version)
 	if err := root.Execute(); err != nil {
-		output.Errorf("%s", err)
+		output.F.Error(err.Error())
 		os.Exit(1)
 	}
 }

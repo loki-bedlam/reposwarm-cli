@@ -17,11 +17,13 @@ func newResultsCmd() *cobra.Command {
 		Short:   "Browse architecture investigation results",
 	}
 	cmd.AddCommand(newResultsListCmd())
-	cmd.AddCommand(newResultsShowCmd())
+	cmd.AddCommand(newResultsSectionsCmd())
 	cmd.AddCommand(newResultsReadCmd())
 	cmd.AddCommand(newResultsMetaCmd())
 	cmd.AddCommand(newResultsExportCmd())
 	cmd.AddCommand(newResultsSearchCmd())
+	cmd.AddCommand(newDiffCmd())
+	cmd.AddCommand(newReportCmd())
 	return cmd
 }
 
@@ -44,7 +46,8 @@ func newResultsListCmd() *cobra.Command {
 				return output.JSON(result.Repos)
 			}
 
-			fmt.Printf("\n  %s (%d repos with results)\n\n", output.Bold("Investigation Results"), len(result.Repos))
+			F := output.F
+			F.Section(fmt.Sprintf("Investigation Results (%d repos with results)", len(result.Repos)))
 			headers := []string{"Repository", "Sections", "Last Updated"}
 			var rows [][]string
 			for _, r := range result.Repos {
@@ -54,18 +57,19 @@ func newResultsListCmd() *cobra.Command {
 					r.LastUpdated,
 				})
 			}
-			output.Table(headers, rows)
-			fmt.Println()
+			F.Table(headers, rows)
+			F.Println()
 			return nil
 		},
 	}
 }
 
-func newResultsShowCmd() *cobra.Command {
+func newResultsSectionsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <repo>",
-		Short: "List investigation sections for a repo",
-		Args:  cobra.ExactArgs(1),
+		Use:     "sections <repo>",
+		Aliases: []string{"show"},
+		Short:   "List investigation sections for a repo",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, err := getClient()
 			if err != nil {
@@ -81,19 +85,19 @@ func newResultsShowCmd() *cobra.Command {
 				return output.JSON(index)
 			}
 
-			fmt.Printf("\n  %s — %s (%d sections)\n\n",
-				output.Bold("Results"), output.Bold(args[0]), len(index.Sections))
+			F := output.F
+			F.Section(fmt.Sprintf("Results — %s (%d sections)", args[0], len(index.Sections)))
 			headers := []string{"Section", "Label", "Created"}
 			var rows [][]string
 			for _, s := range index.Sections {
 				rows = append(rows, []string{
-					sectionIcon(s.ID) + " " + s.ID,
+					F.SectionIcon(s.ID) + s.ID,
 					s.Label,
 					s.CreatedAt,
 				})
 			}
-			output.Table(headers, rows)
-			fmt.Println()
+			F.Table(headers, rows)
+			F.Println()
 			return nil
 		},
 	}
@@ -124,7 +128,6 @@ Examples:
 			repo := args[0]
 
 			if len(args) == 2 {
-				// Single section
 				section := args[1]
 				var content api.WikiContent
 				if err := client.Get(ctx(), "/wiki/"+repo+"/"+section, &content); err != nil {
@@ -138,8 +141,10 @@ Examples:
 					fmt.Print(content.Content)
 					return nil
 				}
-				fmt.Printf("\n  %s — %s / %s\n", output.Bold("Results"), output.Bold(repo), output.Cyan(section))
-				fmt.Printf("  %s\n\n", output.Dim(content.CreatedAt))
+				F := output.F
+				F.Section(fmt.Sprintf("Results — %s / %s", repo, section))
+				F.Info(content.CreatedAt)
+				F.Println()
 				fmt.Println(content.Content)
 				return nil
 			}
@@ -158,7 +163,7 @@ Examples:
 			for _, s := range index.Sections {
 				var content api.WikiContent
 				if err := client.Get(ctx(), "/wiki/"+repo+"/"+s.ID, &content); err != nil {
-					output.Errorf("Failed to read %s: %s", s.ID, err)
+					output.F.Error(fmt.Sprintf("Failed to read %s: %s", s.ID, err))
 					continue
 				}
 				allContent = append(allContent, content)
@@ -175,13 +180,14 @@ Examples:
 				return nil
 			}
 
-			fmt.Printf("\n  %s — %s (%d sections)\n\n",
-				output.Bold("Full Investigation"), output.Bold(repo), len(allContent))
+			F := output.F
+			F.Section(fmt.Sprintf("Full Investigation — %s (%d sections)", repo, len(allContent)))
 			for _, c := range allContent {
-				fmt.Printf("  %s %s\n", output.Bold("══"), output.Bold(c.Section))
-				fmt.Printf("  %s\n\n", output.Dim(c.CreatedAt))
+				F.Printf("--- %s ---\n", c.Section)
+				F.Info(c.CreatedAt)
+				F.Println()
 				fmt.Println(c.Content)
-				fmt.Println()
+				F.Println()
 			}
 			return nil
 		},
@@ -205,7 +211,6 @@ func newResultsMetaCmd() *cobra.Command {
 			repo := args[0]
 
 			if len(args) == 2 {
-				// Single section metadata
 				section := args[1]
 				var content api.WikiContent
 				if err := client.Get(ctx(), "/wiki/"+repo+"/"+section, &content); err != nil {
@@ -224,13 +229,14 @@ func newResultsMetaCmd() *cobra.Command {
 					return output.JSON(meta)
 				}
 
-				fmt.Printf("\n  %s\n\n", output.Bold("Section Metadata"))
-				fmt.Printf("  %s  %s\n", output.Dim("Repository  "), repo)
-				fmt.Printf("  %s  %s\n", output.Dim("Section     "), section)
-				fmt.Printf("  %s  %s\n", output.Dim("Created     "), content.CreatedAt)
-				fmt.Printf("  %s  %d\n", output.Dim("Timestamp   "), content.Timestamp)
-				fmt.Printf("  %s  %s\n", output.Dim("Ref Key     "), content.ReferenceKey)
-				fmt.Println()
+				F := output.F
+				F.Section("Section Metadata")
+				F.KeyValue("Repository", repo)
+				F.KeyValue("Section", section)
+				F.KeyValue("Created", content.CreatedAt)
+				F.KeyValue("Timestamp", fmt.Sprint(content.Timestamp))
+				F.KeyValue("Ref Key", content.ReferenceKey)
+				F.Println()
 				return nil
 			}
 
@@ -253,14 +259,15 @@ func newResultsMetaCmd() *cobra.Command {
 				return output.JSON(meta)
 			}
 
-			fmt.Printf("\n  %s\n\n", output.Bold("Repository Metadata"))
-			fmt.Printf("  %s  %s\n", output.Dim("Repository  "), repo)
-			fmt.Printf("  %s  %d\n", output.Dim("Sections    "), len(index.Sections))
-			fmt.Printf("  %s  %v\n", output.Dim("Has Docs    "), index.HasDocs)
+			F := output.F
+			F.Section("Repository Metadata")
+			F.KeyValue("Repository", repo)
+			F.KeyValue("Sections", fmt.Sprint(len(index.Sections)))
+			F.KeyValue("Has Docs", fmt.Sprint(index.HasDocs))
 			if len(index.Sections) > 0 {
-				fmt.Printf("  %s  %s\n", output.Dim("Last Update "), index.Sections[len(index.Sections)-1].CreatedAt)
+				F.KeyValue("Last Update", index.Sections[len(index.Sections)-1].CreatedAt)
 			}
-			fmt.Println()
+			F.Println()
 			return nil
 		},
 	}
@@ -300,8 +307,8 @@ func newResultsExportCmd() *cobra.Command {
 				if err := os.WriteFile(outputFile, []byte(sb.String()), 0644); err != nil {
 					return fmt.Errorf("writing file: %w", err)
 				}
-				output.Successf("Exported %d sections to %s (%d bytes)",
-					len(index.Sections), outputFile, sb.Len())
+				output.F.Success(fmt.Sprintf("Exported %d sections to %s (%d bytes)",
+					len(index.Sections), outputFile, sb.Len()))
 				return nil
 			}
 
@@ -365,28 +372,13 @@ func newResultsSearchCmd() *cobra.Command {
 				return output.JSON(hits)
 			}
 
-			fmt.Printf("\n  %s '%s' (%d hits)\n\n", output.Bold("Search Results"), args[0], len(hits))
+			F := output.F
+			F.Section(fmt.Sprintf("Search Results '%s' (%d hits)", args[0], len(hits)))
 			for _, h := range hits {
-				fmt.Printf("  %s/%s\n", output.Cyan(h.Repo), output.Dim(h.Section))
-				fmt.Printf("    %s\n\n", h.Line)
+				F.Printf("  %s/%s\n", h.Repo, h.Section)
+				F.Printf("    %s\n\n", h.Line)
 			}
 			return nil
 		},
 	}
-}
-
-func sectionIcon(id string) string {
-	icons := map[string]string{
-		"hl_overview": "📋", "module_deep_dive": "🔍", "dependencies": "📦",
-		"core_entities": "🏗", "DBs": "💾", "APIs": "🌐", "api_surface": "🔌",
-		"data_mapping": "🗺", "events": "⚡", "service_dependencies": "🔗",
-		"deployment": "🚀", "authentication": "🔑", "authorization": "🛡",
-		"security_check": "🔒", "prompt_security_check": "🤖",
-		"monitoring": "📊", "ml_services": "🧠", "feature_flags": "🚩",
-		"internals": "⚙",
-	}
-	if icon, ok := icons[id]; ok {
-		return icon
-	}
-	return "📄"
 }
