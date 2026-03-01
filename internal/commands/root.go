@@ -14,7 +14,7 @@ import (
 
 var (
 	flagJSON     bool
-	flagHuman    bool
+	flagAgent    bool
 	flagAPIUrl   string
 	flagAPIToken string
 	flagVerbose  bool
@@ -38,7 +38,7 @@ Get started:
   reposwarm results list           Browse investigation results`,
 		Version: version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			output.InitFormatter(flagHuman)
+			output.InitFormatter(!flagAgent)
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -46,7 +46,7 @@ Get started:
 
 	root.Flags().BoolP("version", "v", false, "Print version")
 	root.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON")
-	root.PersistentFlags().BoolVar(&flagHuman, "human", false, "Rich output with colors and emojis")
+	root.PersistentFlags().BoolVar(&flagAgent, "agent", false, "Plain text output for agents/scripts")
 	root.PersistentFlags().StringVar(&flagAPIUrl, "api-url", "", "API server URL (overrides config)")
 	root.PersistentFlags().StringVar(&flagAPIToken, "api-token", "", "API bearer token (overrides config)")
 	root.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "Show debug info")
