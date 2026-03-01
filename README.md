@@ -94,13 +94,13 @@ reposwarm results sections <repo> # Browse results
 | Flag | Description |
 |------|-------------|
 | `--json` | JSON output (agent/script-friendly) |
-| `--human` | Rich output with colors and emojis |
+| `--agent` | Plain text output for agents/scripts |
 | `--api-url <url>` | Override API URL |
 | `--api-token <token>` | Override API token |
 | `--verbose` | Debug info |
 | `-v` / `--version` | Print version |
 
-Default output is plain text (agent-friendly). Use `--human` for rich terminal output.
+Default output is human-friendly (colors, tables). Use `--agent` for plain text or `--json` for structured output.
 
 ## Environment Variables
 
