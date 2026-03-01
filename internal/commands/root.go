@@ -43,6 +43,7 @@ Get started:
 		SilenceErrors: true,
 	}
 
+	root.Flags().BoolP("version", "v", false, "Print version")
 	root.PersistentFlags().BoolVar(&flagJSON, "json", false, "Output as JSON")
 	root.PersistentFlags().BoolVar(&flagHuman, "human", false, "Rich output with colors and emojis")
 	root.PersistentFlags().StringVar(&flagAPIUrl, "api-url", "", "API server URL (overrides config)")
@@ -52,6 +53,13 @@ Get started:
 	// Setup & diagnostics
 	root.AddCommand(newNewCmd())
 	root.AddCommand(newDoctorCmd())
+	root.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print the version number",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("reposwarm version %s\n", version)
+		},
+	})
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newUpgradeCmd(version))
