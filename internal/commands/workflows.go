@@ -18,6 +18,7 @@ func newWorkflowsCmd() *cobra.Command {
 	cmd.AddCommand(newWorkflowsListCmd())
 	cmd.AddCommand(newWorkflowsStatusCmd())
 	cmd.AddCommand(newWorkflowsTerminateCmd())
+	cmd.AddCommand(newWorkflowsProgressCmd())
 	return cmd
 }
 
