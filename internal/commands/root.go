@@ -25,7 +25,8 @@ func NewRootCmd(version string) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "reposwarm",
 		Short: "CLI for RepoSwarm — AI-powered multi-repo architecture discovery",
-		Long: `RepoSwarm CLI provides command-line access to the RepoSwarm platform.
+		Long: fmt.Sprintf("RepoSwarm CLI v%s", version) + `
+Provides command-line access to the RepoSwarm platform.
 Discover repositories, trigger investigations, browse results, and manage prompts.
 
 Get started:
