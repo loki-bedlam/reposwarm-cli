@@ -59,22 +59,22 @@ func newPromptsListCmd() *cobra.Command {
 				return err
 			}
 
-			var filtered []api.Prompt
-			for _, p := range prompts {
-				if enabledOnly && !p.Enabled {
-					continue
+			// If API has prompts, filter and show
+			if len(prompts) > 0 {
+				var filtered []api.Prompt
+				for _, p := range prompts {
+					if enabledOnly && !p.Enabled {
+						continue
+					}
+					if disabledOnly && p.Enabled {
+						continue
+					}
+					filtered = append(filtered, p)
 				}
-				if disabledOnly && p.Enabled {
-					continue
+				if flagJSON {
+					return output.JSON(filtered)
 				}
-				filtered = append(filtered, p)
-			}
-
-			if flagJSON {
-				return output.JSON(filtered)
-			}
-
-			fmt.Printf("\n  %s (%d prompts)\n\n", output.Bold("Prompts"), len(filtered))
+				fmt.Printf("\n  %s (%d prompts)\n\n", output.Bold("Prompts"), len(filtered))
 			headers := []string{"Name", "Type", "Enabled", "Order", "Version"}
 			var rows [][]string
 			for _, p := range filtered {
@@ -95,7 +95,66 @@ func newPromptsListCmd() *cobra.Command {
 				})
 			}
 			output.Table(headers, rows)
-			fmt.Println()
+				fmt.Println()
+				return nil
+			}
+
+			// Fallback: derive sections from investigation results
+			var repoList api.WikiReposResponse
+			if err := client.Get(ctx(), "/wiki", &repoList); err != nil || len(repoList.Repos) == 0 {
+				output.F.Info("No prompts configured and no results to derive from")
+				return nil
+			}
+
+			// Get sections from first repo with results
+			var index api.WikiIndex
+			if err := client.Get(ctx(), "/wiki/"+repoList.Repos[0].Name, &index); err != nil {
+				output.F.Info("No prompts configured")
+				return nil
+			}
+
+			// Count frequency across sample
+			sectionFreq := map[string]int{}
+			sampleSize := len(repoList.Repos)
+			if sampleSize > 5 {
+				sampleSize = 5
+			}
+			for i := 0; i < sampleSize; i++ {
+				var idx api.WikiIndex
+				if err := client.Get(ctx(), "/wiki/"+repoList.Repos[i].Name, &idx); err != nil {
+					continue
+				}
+				for _, s := range idx.Sections {
+					sectionFreq[s.Name()]++
+				}
+			}
+
+			if flagJSON {
+				type ds struct {
+					Name  string `json:"name"`
+					Count int    `json:"frequency"`
+				}
+				var derived []ds
+				for _, s := range index.Sections {
+					derived = append(derived, ds{Name: s.Name(), Count: sectionFreq[s.Name()]})
+				}
+				return output.JSON(map[string]any{"source": "derived_from_results", "sections": derived})
+			}
+
+			F := output.F
+			F.Section(fmt.Sprintf("Active Sections (%d, derived from results)", len(index.Sections)))
+			F.Info("(Prompts API returned empty; showing sections found in results)")
+			F.Println()
+			headers := []string{"Section", "Found In"}
+			var rows [][]string
+			for _, s := range index.Sections {
+				rows = append(rows, []string{
+					s.Name(),
+					fmt.Sprintf("%d/%d repos", sectionFreq[s.Name()], sampleSize),
+				})
+			}
+			F.Table(headers, rows)
+			F.Println()
 			return nil
 		},
 	}

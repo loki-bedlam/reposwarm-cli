@@ -22,6 +22,7 @@ func newResultsCmd() *cobra.Command {
 	cmd.AddCommand(newResultsMetaCmd())
 	cmd.AddCommand(newResultsExportCmd())
 	cmd.AddCommand(newResultsSearchCmd())
+	cmd.AddCommand(newResultsAuditCmd())
 	cmd.AddCommand(newDiffCmd())
 	cmd.AddCommand(newReportCmd())
 	return cmd
@@ -327,64 +328,4 @@ func newResultsExportCmd() *cobra.Command {
 	return cmd
 }
 
-func newResultsSearchCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "search <query>",
-		Short: "Search across all investigation results",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient()
-			if err != nil {
-				return err
-			}
 
-			query := strings.ToLower(args[0])
-
-			var repoList api.WikiReposResponse
-			if err := client.Get(ctx(), "/wiki", &repoList); err != nil {
-				return err
-			}
-
-			type SearchHit struct {
-				Repo    string `json:"repo"`
-				Section string `json:"section"`
-				Line    string `json:"line"`
-			}
-
-			var hits []SearchHit
-			for _, r := range repoList.Repos {
-				var index api.WikiIndex
-				if err := client.Get(ctx(), "/wiki/"+r.Name, &index); err != nil {
-					continue
-				}
-				for _, s := range index.Sections {
-					var content api.WikiContent
-					if err := client.Get(ctx(), "/wiki/"+r.Name+"/"+s.Name(), &content); err != nil {
-						continue
-					}
-					for _, line := range strings.Split(content.Content, "\n") {
-						if strings.Contains(strings.ToLower(line), query) {
-							hits = append(hits, SearchHit{
-								Repo:    r.Name,
-								Section: s.Name(),
-								Line:    strings.TrimSpace(line),
-							})
-						}
-					}
-				}
-			}
-
-			if flagJSON {
-				return output.JSON(hits)
-			}
-
-			F := output.F
-			F.Section(fmt.Sprintf("Search Results '%s' (%d hits)", args[0], len(hits)))
-			for _, h := range hits {
-				F.Printf("  %s/%s\n", h.Repo, h.Section)
-				F.Printf("    %s\n\n", h.Line)
-			}
-			return nil
-		},
-	}
-}
