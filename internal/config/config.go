@@ -22,7 +22,7 @@ type Config struct {
 // DefaultConfig returns sensible defaults.
 func DefaultConfig() *Config {
 	return &Config{
-		APIUrl:       "https://dkhtk1q9b2nii.cloudfront.net/v1",
+		APIUrl:       "http://localhost:3000/v1",
 		Region:       "us-east-1",
 		DefaultModel: "us.anthropic.claude-sonnet-4-6",
 		ChunkSize:    10,

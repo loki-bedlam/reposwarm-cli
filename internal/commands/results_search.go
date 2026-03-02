@@ -23,7 +23,7 @@ Without filters, searches all repos (can be slow for many repos).
 Use --repo to limit to a specific repo, --section for a specific section.
 
 Examples:
-  reposwarm results search "Cognito" --repo bedlam-infra
+  reposwarm results search "Cognito" --repo my-app
   reposwarm results search "DynamoDB" --section DBs
   reposwarm results search "security" --max 20`,
 		Args: cobra.ExactArgs(1),

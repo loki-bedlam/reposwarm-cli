@@ -284,9 +284,9 @@ func newResultsExportCmd() *cobra.Command {
 		Long: `Export investigation results to local markdown files.
 
 Single repo:
-  reposwarm results export bedlam-infra              # stdout
-  reposwarm results export bedlam-infra -o out.md    # specific file
-  reposwarm results export bedlam-infra -d ./docs    # writes docs/bedlam-infra.arch.md
+  reposwarm results export my-app              # stdout
+  reposwarm results export my-app -o out.md    # specific file
+  reposwarm results export my-app -d ./docs    # writes docs/my-app.arch.md
 
 All repos:
   reposwarm results export --all -d ./arch-docs      # exports all repos to directory`,
