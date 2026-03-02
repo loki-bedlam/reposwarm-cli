@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+
+func testConfig() *Config {
+	return &Config{
+		WorkerRepoURL:  "https://github.com/royosherove/repo-swarm.git",
+		APIRepoURL:     "https://github.com/loki-bedlam/reposwarm-api.git",
+		UIRepoURL:      "https://github.com/loki-bedlam/reposwarm-ui.git",
+		DynamoDBTable:  "reposwarm-cache",
+		DefaultModel:   "us.anthropic.claude-sonnet-4-6",
+		TemporalPort:   "7233",
+		TemporalUIPort: "8233",
+		APIPort:        "3000",
+		UIPort:         "3001",
+		Region:         "us-east-1",
+	}
+}
 func TestDetect(t *testing.T) {
 	env := Detect()
 
@@ -110,7 +125,7 @@ func TestGenerateGuide(t *testing.T) {
 		HasNode: true, HasPython: true, HasGit: true,
 		AWSRegion: "us-east-1",
 	}
-	guide := GenerateGuide(env, "/tmp/test")
+	guide := GenerateGuide(env, "/tmp/test", testConfig())
 	if !strings.Contains(guide, "# RepoSwarm Local Installation Guide") {
 		t.Error("guide should have title")
 	}
@@ -129,7 +144,7 @@ func TestGenerateAgentGuide(t *testing.T) {
 		HasNode: true, HasPython: true, HasGit: true,
 		AWSRegion: "us-west-2",
 	}
-	guide := GenerateAgentGuide(env, "/tmp/test")
+	guide := GenerateAgentGuide(env, "/tmp/test", testConfig())
 	if !strings.Contains(guide, "Agent Instructions") {
 		t.Error("agent guide should have agent title")
 	}
@@ -152,7 +167,7 @@ func TestGenerateGuideWithMissing(t *testing.T) {
 		HasBrew: false, HasApt: true,
 		AWSRegion: "us-east-1",
 	}
-	guide := GenerateGuide(env, "/tmp/test")
+	guide := GenerateGuide(env, "/tmp/test", testConfig())
 	if !strings.Contains(guide, "Missing dependencies") {
 		t.Error("guide should mention missing deps")
 	}
@@ -166,7 +181,7 @@ func TestGenerateAgentGuideWithMissing(t *testing.T) {
 		HasBrew: true,
 		AWSRegion: "us-east-1",
 	}
-	guide := GenerateAgentGuide(env, "/tmp/test")
+	guide := GenerateAgentGuide(env, "/tmp/test", testConfig())
 	if !strings.Contains(guide, "Step 0:") {
 		t.Error("agent guide should have Step 0 for missing deps")
 	}

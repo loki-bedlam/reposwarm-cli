@@ -13,6 +13,21 @@ import (
 	"time"
 )
 
+// Config is a subset of the full CLI config used by SetupLocal.
+// Avoids importing the config package (which would create a cycle).
+type Config struct {
+	WorkerRepoURL  string
+	APIRepoURL     string
+	UIRepoURL      string
+	DynamoDBTable  string
+	DefaultModel   string
+	TemporalPort   string
+	TemporalUIPort string
+	APIPort        string
+	UIPort         string
+	Region         string
+}
+
 // LocalSetupResult holds the outcome of each setup step.
 type LocalSetupResult struct {
 	InstallDir string            `json:"installDir"`
@@ -39,7 +54,8 @@ type Printer interface {
 }
 
 // SetupLocal orchestrates a complete local RepoSwarm environment.
-func SetupLocal(env *Environment, installDir string, printer Printer) (*LocalSetupResult, error) {
+// Config values drive repo URLs, ports, table names, and model IDs.
+func SetupLocal(env *Environment, installDir string, cfg *Config, printer Printer) (*LocalSetupResult, error) {
 	result := &LocalSetupResult{InstallDir: installDir}
 
 	// Step 0: Check prerequisites
@@ -72,23 +88,23 @@ func SetupLocal(env *Environment, installDir string, printer Printer) (*LocalSet
 
 	// Step 2: Start Temporal
 	printer.Section("Starting Temporal (Docker Compose)")
-	if err := setupTemporal(installDir, printer); err != nil {
+	if err := setupTemporal(installDir, cfg, printer); err != nil {
 		result.Steps = append(result.Steps, LocalStepResult{"temporal", "fail", err.Error()})
 		return result, fmt.Errorf("temporal setup: %w", err)
 	}
-	result.Steps = append(result.Steps, LocalStepResult{"temporal", "ok", "http://localhost:8233"})
+	result.Steps = append(result.Steps, LocalStepResult{"temporal", "ok", fmt.Sprintf("http://localhost:%s", cfg.TemporalUIPort)})
 
 	// Step 3: Clone and start API
 	printer.Section("Setting up API server")
-	if err := setupAPI(installDir, env.AWSRegion, token, printer); err != nil {
+	if err := setupAPI(installDir, cfg, token, printer); err != nil {
 		result.Steps = append(result.Steps, LocalStepResult{"api", "fail", err.Error()})
 		return result, fmt.Errorf("API setup: %w", err)
 	}
-	result.Steps = append(result.Steps, LocalStepResult{"api", "ok", "http://localhost:3000"})
+	result.Steps = append(result.Steps, LocalStepResult{"api", "ok", fmt.Sprintf("http://localhost:%s", cfg.APIPort)})
 
 	// Step 4: Clone and start Worker
 	printer.Section("Setting up Worker")
-	if err := setupWorker(installDir, env.AWSRegion, printer); err != nil {
+	if err := setupWorker(installDir, cfg, printer); err != nil {
 		printer.Warning(fmt.Sprintf("Worker setup failed: %s (investigations won't run, but API/UI will work)", err))
 		result.Steps = append(result.Steps, LocalStepResult{"worker", "fail", err.Error()})
 		// Don't return error — worker is optional for basic functionality
@@ -98,16 +114,16 @@ func SetupLocal(env *Environment, installDir string, printer Printer) (*LocalSet
 
 	// Step 5: Clone and start UI
 	printer.Section("Setting up UI")
-	if err := setupUI(installDir, printer); err != nil {
+	if err := setupUI(installDir, cfg, printer); err != nil {
 		printer.Warning(fmt.Sprintf("UI setup failed: %s (CLI still works)", err))
 		result.Steps = append(result.Steps, LocalStepResult{"ui", "fail", err.Error()})
 	} else {
-		result.Steps = append(result.Steps, LocalStepResult{"ui", "ok", "http://localhost:3001"})
+		result.Steps = append(result.Steps, LocalStepResult{"ui", "ok", fmt.Sprintf("http://localhost:%s", cfg.UIPort)})
 	}
 
 	// Step 6: Configure CLI
 	printer.Section("Configuring CLI")
-	if err := configureCLI(token); err != nil {
+	if err := configureCLI(cfg, token); err != nil {
 		result.Steps = append(result.Steps, LocalStepResult{"cli-config", "fail", err.Error()})
 		return result, fmt.Errorf("CLI configuration: %w", err)
 	}
@@ -116,7 +132,7 @@ func SetupLocal(env *Environment, installDir string, printer Printer) (*LocalSet
 
 	// Step 7: Verify
 	printer.Section("Verifying services")
-	verifyResult := verifyServices(printer)
+	verifyResult := verifyServices(cfg, printer)
 	result.Steps = append(result.Steps, verifyResult)
 
 	result.Success = verifyResult.Status != "fail"
@@ -129,9 +145,9 @@ func SetupLocal(env *Environment, installDir string, printer Printer) (*LocalSet
 		printer.Warning("RepoSwarm started with some issues (see above)")
 	}
 	printer.Printf("")
-	printer.Printf("  Temporal UI:  http://localhost:%s", DefaultTemporalUIPort)
-	printer.Printf("  API Server:   http://localhost:%s", DefaultAPIPort)
-	printer.Printf("  UI:           http://localhost:%s", DefaultUIPort)
+	printer.Printf("  Temporal UI:  http://localhost:%s", cfg.TemporalUIPort)
+	printer.Printf("  API Server:   http://localhost:%s", cfg.APIPort)
+	printer.Printf("  UI:           http://localhost:%s", cfg.UIPort)
 	printer.Printf("")
 	printer.Printf("  API Token:    %s", token)
 	printer.Printf("  Logs:         %s/*/%.log", installDir)
@@ -145,7 +161,7 @@ func SetupLocal(env *Environment, installDir string, printer Printer) (*LocalSet
 	return result, nil
 }
 
-func setupTemporal(installDir string, printer Printer) error {
+func setupTemporal(installDir string, cfg *Config, printer Printer) error {
 	temporalDir := filepath.Join(installDir, "temporal")
 	if err := os.MkdirAll(temporalDir, 0755); err != nil {
 		return err
@@ -168,7 +184,7 @@ func setupTemporal(installDir string, printer Printer) error {
 
 	// Wait for Temporal to be ready (up to 60s)
 	printer.Info("Waiting for Temporal to be ready (this may take up to 60s)...")
-	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s/api/v1/namespaces", DefaultTemporalPort), 60*time.Second); err != nil {
+	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s/api/v1/namespaces", cfg.TemporalPort), 60*time.Second); err != nil {
 		// Check container status for debugging
 		statusCmd := exec.Command("docker", "compose", "ps", "--format", "{{.Name}}\t{{.Status}}")
 		statusCmd.Dir = temporalDir
@@ -179,13 +195,13 @@ func setupTemporal(installDir string, printer Printer) error {
 	return nil
 }
 
-func setupAPI(installDir, region, token string, printer Printer) error {
+func setupAPI(installDir string, cfg *Config, token string, printer Printer) error {
 	apiDir := filepath.Join(installDir, "api")
 
 	// Clone
 	if _, err := os.Stat(apiDir); os.IsNotExist(err) {
 		printer.Info("Cloning API server...")
-		cmd := exec.Command("git", "clone", DefaultAPIRepoURL, "api")
+		cmd := exec.Command("git", "clone", cfg.APIRepoURL, "api")
 		cmd.Dir = installDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git clone failed: %w\n%s", err, string(out))
@@ -219,7 +235,7 @@ AWS_REGION=%s
 DYNAMODB_TABLE=%s
 BEARER_TOKEN=%s
 AUTH_MODE=local
-`, DefaultAPIPort, DefaultTemporalPort, region, DefaultDynamoDBTable, token)
+`, cfg.APIPort, cfg.TemporalPort, cfg.Region, cfg.DynamoDBTable, token)
 
 	if err := os.WriteFile(filepath.Join(apiDir, ".env"), []byte(envContent), 0600); err != nil {
 		return fmt.Errorf("writing .env: %w", err)
@@ -248,20 +264,20 @@ AUTH_MODE=local
 
 	// Wait for API
 	printer.Info("Waiting for API to be ready...")
-	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s/v1/health", DefaultAPIPort), 30*time.Second); err != nil {
+	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s/v1/health", cfg.APIPort), 30*time.Second); err != nil {
 		return fmt.Errorf("API not ready after 30s: %w", err)
 	}
 	printer.Success("API server is ready")
 	return nil
 }
 
-func setupWorker(installDir, region string, printer Printer) error {
+func setupWorker(installDir string, cfg *Config, printer Printer) error {
 	workerDir := filepath.Join(installDir, "worker")
 
 	// Clone
 	if _, err := os.Stat(workerDir); os.IsNotExist(err) {
 		printer.Info("Cloning worker...")
-		cmd := exec.Command("git", "clone", DefaultWorkerRepoURL, "worker")
+		cmd := exec.Command("git", "clone", cfg.WorkerRepoURL, "worker")
 		cmd.Dir = installDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git clone failed: %w\n%s", err, string(out))
@@ -294,7 +310,7 @@ TEMPORAL_TASK_QUEUE=investigate-task-queue
 AWS_REGION=%s
 DYNAMODB_TABLE=%s
 DEFAULT_MODEL=%s
-`, DefaultTemporalPort, region, DefaultDynamoDBTable, DefaultModel)
+`, cfg.TemporalPort, cfg.Region, cfg.DynamoDBTable, cfg.DefaultModel)
 
 	if err := os.WriteFile(filepath.Join(workerDir, ".env"), []byte(envContent), 0600); err != nil {
 		return fmt.Errorf("writing .env: %w", err)
@@ -314,12 +330,12 @@ DEFAULT_MODEL=%s
 	startCmd.Stderr = logFile
 	// Pass env vars explicitly since .env isn't auto-loaded
 	startCmd.Env = append(os.Environ(),
-		fmt.Sprintf("TEMPORAL_ADDRESS=localhost:%s", DefaultTemporalPort),
+		fmt.Sprintf("TEMPORAL_ADDRESS=localhost:%s", cfg.TemporalPort),
 		"TEMPORAL_NAMESPACE=default",
 		"TEMPORAL_TASK_QUEUE=investigate-task-queue",
-		fmt.Sprintf("AWS_REGION=%s", region),
-		fmt.Sprintf("DYNAMODB_TABLE=%s", DefaultDynamoDBTable),
-		fmt.Sprintf("DEFAULT_MODEL=%s", DefaultModel),
+		fmt.Sprintf("AWS_REGION=%s", cfg.Region),
+		fmt.Sprintf("DYNAMODB_TABLE=%s", cfg.DynamoDBTable),
+		fmt.Sprintf("DEFAULT_MODEL=%s", cfg.DefaultModel),
 	)
 	if err := startCmd.Start(); err != nil {
 		logFile.Close()
@@ -334,13 +350,13 @@ DEFAULT_MODEL=%s
 	return nil
 }
 
-func setupUI(installDir string, printer Printer) error {
+func setupUI(installDir string, cfg *Config, printer Printer) error {
 	uiDir := filepath.Join(installDir, "ui")
 
 	// Clone
 	if _, err := os.Stat(uiDir); os.IsNotExist(err) {
 		printer.Info("Cloning UI...")
-		cmd := exec.Command("git", "clone", DefaultUIRepoURL, "ui")
+		cmd := exec.Command("git", "clone", cfg.UIRepoURL, "ui")
 		cmd.Dir = installDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git clone failed: %w\n%s", err, string(out))
@@ -358,7 +374,7 @@ func setupUI(installDir string, printer Printer) error {
 	}
 
 	// Write .env.local
-	envContent := "NEXT_PUBLIC_API_URL=http://localhost:3000\n"
+	envContent := fmt.Sprintf("NEXT_PUBLIC_API_URL=http://localhost:%s\n", cfg.APIPort)
 	if err := os.WriteFile(filepath.Join(uiDir, ".env.local"), []byte(envContent), 0644); err != nil {
 		return fmt.Errorf("writing .env.local: %w", err)
 	}
@@ -385,7 +401,7 @@ func setupUI(installDir string, printer Printer) error {
 
 	// Wait for UI
 	printer.Info("Waiting for UI to be ready...")
-	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s", DefaultUIPort), 30*time.Second); err != nil {
+	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s", cfg.UIPort), 30*time.Second); err != nil {
 		printer.Warning("UI not responding yet — it may still be compiling (check ui/ui.log)")
 		return nil // Non-fatal
 	}
@@ -393,7 +409,7 @@ func setupUI(installDir string, printer Printer) error {
 	return nil
 }
 
-func configureCLI(token string) error {
+func configureCLI(cfg *Config, token string) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return err
@@ -410,18 +426,18 @@ func configureCLI(token string) error {
   "chunkSize": 10,
   "outputFormat": "pretty"
 }
-`, DefaultAPIPort, token, DefaultModel)
+`, cfg.APIPort, token, cfg.DefaultModel)
 	return os.WriteFile(filepath.Join(configDir, "config.json"), []byte(configContent), 0600)
 }
 
-func verifyServices(printer Printer) LocalStepResult {
+func verifyServices(cfg *Config, printer Printer) LocalStepResult {
 	checks := []struct {
 		name string
 		url  string
 	}{
-		{"Temporal", fmt.Sprintf("http://localhost:%s/api/v1/namespaces", DefaultTemporalPort)},
-		{"API", fmt.Sprintf("http://localhost:%s/v1/health", DefaultAPIPort)},
-		{"UI", fmt.Sprintf("http://localhost:%s", DefaultUIPort)},
+		{"Temporal", fmt.Sprintf("http://localhost:%s/api/v1/namespaces", cfg.TemporalPort)},
+		{"API", fmt.Sprintf("http://localhost:%s/v1/health", cfg.APIPort)},
+		{"UI", fmt.Sprintf("http://localhost:%s", cfg.UIPort)},
 	}
 
 	allOK := true

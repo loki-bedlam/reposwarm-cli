@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/loki-bedlam/reposwarm-cli/internal/bootstrap"
+	"github.com/loki-bedlam/reposwarm-cli/internal/config"
 	"github.com/loki-bedlam/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -47,24 +48,41 @@ Examples:
 
 			// --local mode: automated setup
 			if localMode {
+				cliCfg, _ := config.Load()
+				bsCfg := &bootstrap.Config{
+					WorkerRepoURL:  cliCfg.EffectiveWorkerRepoURL(),
+					APIRepoURL:     cliCfg.EffectiveAPIRepoURL(),
+					UIRepoURL:      cliCfg.EffectiveUIRepoURL(),
+					DynamoDBTable:  cliCfg.EffectiveDynamoDBTable(),
+					DefaultModel:   cliCfg.EffectiveModel(),
+					TemporalPort:   cliCfg.EffectiveTemporalPort(),
+					TemporalUIPort: cliCfg.EffectiveTemporalUIPort(),
+					APIPort:        cliCfg.EffectiveAPIPort(),
+					UIPort:         cliCfg.EffectiveUIPort(),
+					Region:         cliCfg.Region,
+				}
+				if bsCfg.Region == "" {
+					bsCfg.Region = env.AWSRegion
+				}
 				if flagJSON {
 					printer := &jsonPrinter{}
-					result, err := bootstrap.SetupLocal(env, dir, printer)
+					result, err := bootstrap.SetupLocal(env, dir, bsCfg, printer)
 					if err != nil {
-						// Still output what we have
 						return output.JSON(result)
 					}
 					return output.JSON(result)
 				}
 				printer := &fmtPrinter{}
-				_, err := bootstrap.SetupLocal(env, dir, printer)
+				_, err := bootstrap.SetupLocal(env, dir, bsCfg, printer)
 				return err
 			}
 
 			// JSON mode — generate guides
 			if flagJSON {
-				guideContent := bootstrap.GenerateGuide(env, dir)
-				agentGuideContent := bootstrap.GenerateAgentGuide(env, dir)
+				cliCfgGuide, _ := config.Load()
+				guideCfg := cfgToBootstrap(cliCfgGuide, env)
+				guideContent := bootstrap.GenerateGuide(env, dir, guideCfg)
+				agentGuideContent := bootstrap.GenerateAgentGuide(env, dir, guideCfg)
 
 				if err := writeGuidesSilent(dir, guideContent, agentGuideContent); err != nil {
 					return err
@@ -96,8 +114,10 @@ Examples:
 			}
 
 			// Generate guides
-			guideContent := bootstrap.GenerateGuide(env, dir)
-			agentGuideContent := bootstrap.GenerateAgentGuide(env, dir)
+			cliCfgGuide2, _ := config.Load()
+			guideCfg2 := cfgToBootstrap(cliCfgGuide2, env)
+			guideContent := bootstrap.GenerateGuide(env, dir, guideCfg2)
+			agentGuideContent := bootstrap.GenerateAgentGuide(env, dir, guideCfg2)
 
 			if guideOnly {
 				return writeGuides(dir, guideContent, agentGuideContent)
@@ -128,7 +148,7 @@ Examples:
 			fmt.Printf("\n  %s\n\n", output.Bold("Next steps:"))
 			fmt.Printf("  1. Review the guide:     %s\n", output.Cyan(filepath.Join(dir, "INSTALL.md")))
 			fmt.Printf("  2. Follow the steps to start each service\n")
-			fmt.Printf("  3. Configure the CLI:    %s\n", output.Cyan("reposwarm config set apiUrl http://localhost:3000/v1"))
+			fmt.Printf("  3. Configure the CLI:    %s\n", output.Cyan("reposwarm config set apiUrl http://localhost:<port>/v1"))
 			fmt.Printf("  4. Verify:               %s\n", output.Cyan("reposwarm status"))
 			fmt.Printf("\n  Or use automated setup:  %s\n", output.Cyan("reposwarm new --local"))
 
@@ -261,4 +281,23 @@ func agentDisplayName(agent string) string {
 		return n
 	}
 	return agent
+}
+
+func cfgToBootstrap(cliCfg *config.Config, env *bootstrap.Environment) *bootstrap.Config {
+	cfg := &bootstrap.Config{
+		WorkerRepoURL:  cliCfg.EffectiveWorkerRepoURL(),
+		APIRepoURL:     cliCfg.EffectiveAPIRepoURL(),
+		UIRepoURL:      cliCfg.EffectiveUIRepoURL(),
+		DynamoDBTable:  cliCfg.EffectiveDynamoDBTable(),
+		DefaultModel:   cliCfg.EffectiveModel(),
+		TemporalPort:   cliCfg.EffectiveTemporalPort(),
+		TemporalUIPort: cliCfg.EffectiveTemporalUIPort(),
+		APIPort:        cliCfg.EffectiveAPIPort(),
+		UIPort:         cliCfg.EffectiveUIPort(),
+		Region:         cliCfg.Region,
+	}
+	if cfg.Region == "" {
+		cfg.Region = env.AWSRegion
+	}
+	return cfg
 }

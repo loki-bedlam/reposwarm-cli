@@ -3,7 +3,6 @@ package config
 
 import (
 	"encoding/json"
-	"github.com/loki-bedlam/reposwarm-cli/internal/bootstrap"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,6 +17,63 @@ type Config struct {
 	DefaultModel string `json:"defaultModel"`
 	ChunkSize    int    `json:"chunkSize"`
 	OutputFormat string `json:"outputFormat"`
+
+	// Local setup defaults (used by 'reposwarm new --local' and guides)
+	WorkerRepoURL  string `json:"workerRepoUrl,omitempty"`
+	APIRepoURL     string `json:"apiRepoUrl,omitempty"`
+	UIRepoURL      string `json:"uiRepoUrl,omitempty"`
+	DynamoDBTable  string `json:"dynamodbTable,omitempty"`
+	TemporalPort   string `json:"temporalPort,omitempty"`
+	TemporalUIPort string `json:"temporalUiPort,omitempty"`
+	APIPort        string `json:"apiPort,omitempty"`
+	UIPort         string `json:"uiPort,omitempty"`
+}
+
+// Effective* methods return the configured value or the built-in default.
+
+func (c *Config) EffectiveWorkerRepoURL() string {
+	if c.WorkerRepoURL != "" { return c.WorkerRepoURL }
+	return "https://github.com/royosherove/repo-swarm.git"
+}
+
+func (c *Config) EffectiveAPIRepoURL() string {
+	if c.APIRepoURL != "" { return c.APIRepoURL }
+	return "https://github.com/loki-bedlam/reposwarm-api.git"
+}
+
+func (c *Config) EffectiveUIRepoURL() string {
+	if c.UIRepoURL != "" { return c.UIRepoURL }
+	return "https://github.com/loki-bedlam/reposwarm-ui.git"
+}
+
+func (c *Config) EffectiveDynamoDBTable() string {
+	if c.DynamoDBTable != "" { return c.DynamoDBTable }
+	return "reposwarm-cache"
+}
+
+func (c *Config) EffectiveModel() string {
+	if c.DefaultModel != "" { return c.DefaultModel }
+	return "us.anthropic.claude-sonnet-4-6"
+}
+
+func (c *Config) EffectiveTemporalPort() string {
+	if c.TemporalPort != "" { return c.TemporalPort }
+	return "7233"
+}
+
+func (c *Config) EffectiveTemporalUIPort() string {
+	if c.TemporalUIPort != "" { return c.TemporalUIPort }
+	return "8233"
+}
+
+func (c *Config) EffectiveAPIPort() string {
+	if c.APIPort != "" { return c.APIPort }
+	return "3000"
+}
+
+func (c *Config) EffectiveUIPort() string {
+	if c.UIPort != "" { return c.UIPort }
+	return "3001"
 }
 
 // DefaultConfig returns sensible defaults.
@@ -25,7 +81,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		APIUrl:       "http://localhost:3000/v1",
 		Region:       "us-east-1",
-		DefaultModel: bootstrap.DefaultModel,
+		DefaultModel: "us.anthropic.claude-sonnet-4-6",
 		ChunkSize:    10,
 		OutputFormat: "pretty",
 	}
@@ -33,7 +89,11 @@ func DefaultConfig() *Config {
 
 // ValidKeys returns the list of settable config keys.
 func ValidKeys() []string {
-	return []string{"apiUrl", "apiToken", "region", "defaultModel", "chunkSize", "outputFormat"}
+	return []string{
+		"apiUrl", "apiToken", "region", "defaultModel", "chunkSize", "outputFormat",
+		"workerRepoUrl", "apiRepoUrl", "uiRepoUrl", "dynamodbTable",
+		"temporalPort", "temporalUiPort", "apiPort", "uiPort",
+	}
 }
 
 // ConfigDir returns the config directory path.
@@ -131,6 +191,22 @@ func Set(cfg *Config, key, value string) error {
 			return fmt.Errorf("outputFormat must be 'pretty' or 'json'")
 		}
 		cfg.OutputFormat = value
+	case "workerRepoUrl":
+		cfg.WorkerRepoURL = value
+	case "apiRepoUrl":
+		cfg.APIRepoURL = value
+	case "uiRepoUrl":
+		cfg.UIRepoURL = value
+	case "dynamodbTable":
+		cfg.DynamoDBTable = value
+	case "temporalPort":
+		cfg.TemporalPort = value
+	case "temporalUiPort":
+		cfg.TemporalUIPort = value
+	case "apiPort":
+		cfg.APIPort = value
+	case "uiPort":
+		cfg.UIPort = value
 	default:
 		return fmt.Errorf("unknown config key: %s (valid: %s)", key, strings.Join(ValidKeys(), ", "))
 	}
