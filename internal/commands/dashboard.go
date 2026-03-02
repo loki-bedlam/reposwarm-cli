@@ -11,7 +11,6 @@ import (
 	"github.com/loki-bedlam/reposwarm-cli/internal/api"
 	"github.com/loki-bedlam/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
-	"golang.org/x/sys/unix"
 )
 
 func newDashboardCmd() *cobra.Command {
@@ -64,12 +63,12 @@ func dashboardHuman(interval int, focusRepo string) error {
 	}
 
 	// Set terminal to raw mode to capture 'q' without Enter
-	oldState, err := makeRaw(int(os.Stdin.Fd()))
+	oldState, err := makeRaw(stdinFd())
 	if err != nil {
 		// Fall back to non-raw mode (Ctrl+C still works)
 		return dashboardLoop(client, interval, focusRepo, nil)
 	}
-	defer restoreTerminal(int(os.Stdin.Fd()), oldState)
+	defer restoreTerminal(stdinFd(), oldState)
 
 	// Quit signal
 	var quit atomic.Bool
@@ -351,26 +350,6 @@ func dashboardJSON() error {
 	return output.JSON(rows)
 }
 
-// Raw terminal helpers using x/sys/unix
-func makeRaw(fd int) (*unix.Termios, error) {
-	oldState, err := unix.IoctlGetTermios(fd, unix.TCGETS)
-	if err != nil {
-		return nil, err
-	}
-	newState := *oldState
-	newState.Lflag &^= unix.ECHO | unix.ICANON
-	newState.Cc[unix.VMIN] = 1
-	newState.Cc[unix.VTIME] = 0
-	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &newState); err != nil {
-		return nil, err
-	}
-	return oldState, nil
-}
-
-func restoreTerminal(fd int, state *unix.Termios) {
-	unix.IoctlSetTermios(fd, unix.TCSETS, state)
-}
-
 // renderFocusedRepo shows step checklist + errors for a specific repo below the grid.
 func renderFocusedRepo(client *api.Client, focusRepo string, rows []dashRow) {
 	// Find the focused row
@@ -415,7 +394,6 @@ func renderFocusedRepo(client *api.Client, focusRepo string, rows []dashRow) {
 		for _, e := range errors {
 			fmt.Printf("    %s  %s\n", output.Red("✗"), e.Summary)
 			if e.Detail != "" {
-				// Indent detail lines
 				for _, line := range strings.Split(e.Detail, "\n") {
 					if line = strings.TrimSpace(line); line != "" {
 						fmt.Printf("       %s\n", output.Dim(truncate(line, 80)))
