@@ -88,15 +88,61 @@ Examples:
 				stalls = append(stalls, detectStalls(client, w, stallMinutes)...)
 			}
 
+			// Check worker errors for JSON too
+			var workerErrsJSON []map[string]string
+			workersJSON := gatherWorkerInfo(client)
+			for _, w := range workersJSON {
+				if w.Status == "failed" || w.Status == "degraded" {
+					detail := w.Status
+					if len(w.EnvErrors) > 0 {
+						detail = fmt.Sprintf("missing: %s", strings.Join(w.EnvErrors, ", "))
+					}
+					workerErrsJSON = append(workerErrsJSON, map[string]string{
+						"worker": w.Name,
+						"status": w.Status,
+						"detail": detail,
+					})
+				}
+			}
+
 			if flagJSON {
 				result := map[string]any{
-					"errors": allErrors,
-					"stalls": stalls,
+					"errors":       allErrors,
+					"stalls":       stalls,
+					"workerErrors": workerErrsJSON,
 				}
 				return output.JSON(result)
 			}
 
-			// Show stall warnings first
+			// Check worker errors
+			var workerErrors []map[string]string
+			workers := gatherWorkerInfo(client)
+			for _, w := range workers {
+				if w.Status == "failed" || w.Status == "degraded" {
+					detail := w.Status
+					if len(w.EnvErrors) > 0 {
+						detail = fmt.Sprintf("missing: %s", strings.Join(w.EnvErrors, ", "))
+					}
+					workerErrors = append(workerErrors, map[string]string{
+						"worker": w.Name,
+						"status": w.Status,
+						"detail": detail,
+					})
+				}
+			}
+
+			// Show worker errors first
+			if len(workerErrors) > 0 {
+				output.F.Println()
+				output.F.Section(fmt.Sprintf("Worker Errors (%d)", len(workerErrors)))
+				for _, we := range workerErrors {
+					fmt.Printf("  %s %s: %s\n", output.Red("\u2717"), output.Bold(we["worker"]), we["detail"])
+					fmt.Printf("    %s Run: reposwarm workers show %s\n", output.Dim("\u2192"), we["worker"])
+					fmt.Println()
+				}
+			}
+
+			// Show stall warnings
 			if len(stalls) > 0 {
 				output.F.Println()
 				output.F.Section(fmt.Sprintf("⚠ Stall Warnings (%d)", len(stalls)))
@@ -111,7 +157,7 @@ Examples:
 				}
 			}
 
-			if len(allErrors) == 0 && len(stalls) == 0 {
+			if len(allErrors) == 0 && len(stalls) == 0 && len(workerErrors) == 0 {
 				if repo != "" {
 					output.F.Success(fmt.Sprintf("No errors or stalls found for '%s' 🎉", repo))
 				} else {
