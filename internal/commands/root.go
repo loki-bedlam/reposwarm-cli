@@ -86,6 +86,10 @@ Get started:
 	root.AddCommand(newLogsCmd())
 	root.AddCommand(newWorkersCmd())
 	root.AddCommand(newPreflightCmd())
+	root.AddCommand(newServicesCmd())
+	root.AddCommand(newRestartCmd())
+	root.AddCommand(newStopCmd())
+	root.AddCommand(newStartCmd())
 
 	// Results (includes diff, report as subcommands; show→sections)
 	root.AddCommand(newResultsCmd())

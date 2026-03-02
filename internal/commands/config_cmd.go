@@ -19,6 +19,7 @@ func newConfigCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newConfigInitCmd())
 	cmd.AddCommand(newConfigShowCmd())
+	cmd.AddCommand(newConfigWorkerEnvCmd())
 	cmd.AddCommand(newConfigSetCmd())
 	cmd.AddCommand(newConfigServerCmd())
 	cmd.AddCommand(newConfigServerSetCmd())
