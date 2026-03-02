@@ -144,19 +144,19 @@ func SetupLocal(env *Environment, installDir string, cfg *Config, printer Printe
 	} else {
 		printer.Warning("RepoSwarm started with some issues (see above)")
 	}
-	printer.Printf("")
-	printer.Printf("  Temporal UI:  http://localhost:%s", cfg.TemporalUIPort)
-	printer.Printf("  API Server:   http://localhost:%s", cfg.APIPort)
-	printer.Printf("  UI:           http://localhost:%s", cfg.UIPort)
-	printer.Printf("")
-	printer.Printf("  API Token:    %s", token)
-	printer.Printf("  Logs:         %s/*/%.log", installDir)
-	printer.Printf("")
-	printer.Printf("  Try:")
-	printer.Printf("    reposwarm status")
-	printer.Printf("    reposwarm repos add is-odd --url https://github.com/jonschlinkert/is-odd --source GitHub")
-	printer.Printf("    reposwarm investigate is-odd")
-	printer.Printf("")
+	printer.Printf("\n")
+	printer.Printf("  Temporal UI:  http://localhost:%s\n", cfg.TemporalUIPort)
+	printer.Printf("  API Server:   http://localhost:%s\n", cfg.APIPort)
+	printer.Printf("  UI:           http://localhost:%s\n", cfg.UIPort)
+	printer.Printf("\n")
+	printer.Printf("  API Token:    %s\n", token)
+	printer.Printf("  Logs:         %s/*/*.log\n", installDir)
+	printer.Printf("\n")
+	printer.Printf("  Try:\n")
+	printer.Printf("    reposwarm status\n")
+	printer.Printf("    reposwarm repos add is-odd --url https://github.com/jonschlinkert/is-odd --source GitHub\n")
+	printer.Printf("    reposwarm investigate is-odd\n")
+	printer.Printf("\n")
 
 	return result, nil
 }
