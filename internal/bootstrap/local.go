@@ -251,6 +251,16 @@ API_BEARER_TOKEN=%s
 	startCmd.Dir = apiDir
 	startCmd.Stdout = logFile
 	startCmd.Stderr = logFile
+	// Pass env vars explicitly since API doesn't use dotenv
+	startCmd.Env = append(os.Environ(),
+		fmt.Sprintf("PORT=%s", cfg.APIPort),
+		fmt.Sprintf("TEMPORAL_SERVER_URL=localhost:%s", cfg.TemporalPort),
+		"TEMPORAL_NAMESPACE=default",
+		"TEMPORAL_TASK_QUEUE=investigate-task-queue",
+		fmt.Sprintf("AWS_REGION=%s", cfg.Region),
+		fmt.Sprintf("DYNAMODB_TABLE=%s", cfg.DynamoDBTable),
+		fmt.Sprintf("API_BEARER_TOKEN=%s", token),
+	)
 	if err := startCmd.Start(); err != nil {
 		logFile.Close()
 		return fmt.Errorf("starting API: %w", err)
@@ -293,10 +303,17 @@ func setupWorker(installDir string, cfg *Config, printer Printer) error {
 		return fmt.Errorf("venv creation failed: %w\n%s", err, string(out))
 	}
 
-	// pip install
+	// Install Python dependencies (supports both requirements.txt and pyproject.toml)
 	printer.Info("Installing Python dependencies...")
 	pipPath := filepath.Join(workerDir, ".venv", "bin", "pip")
-	pipCmd := exec.Command(pipPath, "install", "-r", "requirements.txt")
+	reqFile := filepath.Join(workerDir, "requirements.txt")
+	var pipCmd *exec.Cmd
+	if _, err := os.Stat(reqFile); err == nil {
+		pipCmd = exec.Command(pipPath, "install", "-r", "requirements.txt")
+	} else {
+		// Fall back to pyproject.toml (editable install)
+		pipCmd = exec.Command(pipPath, "install", "-e", ".")
+	}
 	pipCmd.Dir = workerDir
 	if out, err := pipCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("pip install failed: %w\n%s", err, string(out))
@@ -323,7 +340,12 @@ DEFAULT_MODEL=%s
 	}
 
 	pythonPath := filepath.Join(workerDir, ".venv", "bin", "python")
-	startCmd := exec.Command(pythonPath, "-m", "worker.main")
+	// Try src.worker first (pyproject.toml layout), fall back to worker.main
+	workerModule := "worker.main"
+	if _, err := os.Stat(filepath.Join(workerDir, "src")); err == nil {
+		workerModule = "src.worker"
+	}
+	startCmd := exec.Command(pythonPath, "-m", workerModule)
 	startCmd.Dir = workerDir
 	startCmd.Stdout = logFile
 	startCmd.Stderr = logFile
@@ -434,7 +456,7 @@ func verifyServices(cfg *Config, printer Printer) LocalStepResult {
 		name string
 		url  string
 	}{
-		{"Temporal", fmt.Sprintf("http://localhost:%s/api/v1/namespaces", cfg.TemporalPort)},
+		{"Temporal", fmt.Sprintf("http://localhost:%s/api/v1/namespaces", cfg.TemporalUIPort)},
 		{"API", fmt.Sprintf("http://localhost:%s/v1/health", cfg.APIPort)},
 		{"UI", fmt.Sprintf("http://localhost:%s", cfg.UIPort)},
 	}
