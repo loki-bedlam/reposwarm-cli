@@ -542,7 +542,7 @@ func TestInvestigateSingleCmd(t *testing.T) {
 	})
 	defer cleanup()
 
-	out, err := runCmd(t, "investigate", "test-repo", "--json")
+	out, err := runCmd(t, "investigate", "test-repo", "--json", "--force")
 	if err != nil {
 		t.Fatalf("investigate: %v", err)
 	}
