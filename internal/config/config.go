@@ -18,6 +18,9 @@ type Config struct {
 	ChunkSize    int    `json:"chunkSize"`
 	OutputFormat string `json:"outputFormat"`
 
+	// Provider configuration
+	ProviderConfig ProviderConfig `json:"providerConfig,omitempty"`
+
 	// Local setup defaults (used by 'reposwarm new --local' and guides)
 	WorkerRepoURL  string `json:"workerRepoUrl,omitempty"`
 	APIRepoURL     string `json:"apiRepoUrl,omitempty"`
@@ -106,6 +109,7 @@ func ValidKeys() []string {
 		"apiUrl", "apiToken", "region", "defaultModel", "chunkSize", "outputFormat",
 		"workerRepoUrl", "apiRepoUrl", "uiRepoUrl", "hubUrl", "dynamodbTable",
 		"temporalPort", "temporalUiPort", "apiPort", "uiPort", "installDir",
+		"provider", "awsRegion", "proxyUrl", "proxyKey", "smallModel",
 	}
 }
 
@@ -224,6 +228,20 @@ func Set(cfg *Config, key, value string) error {
 		cfg.UIPort = value
 	case "installDir":
 		cfg.InstallDir = value
+	case "provider":
+		if !IsValidProvider(value) {
+			return fmt.Errorf("unknown provider: %s (valid: anthropic, bedrock, litellm)", value)
+		}
+		cfg.ProviderConfig.Provider = Provider(value)
+	case "awsRegion":
+		cfg.ProviderConfig.AWSRegion = value
+	case "proxyUrl":
+		cfg.ProviderConfig.ProxyURL = value
+	case "proxyKey":
+		cfg.ProviderConfig.ProxyKey = value
+	case "smallModel":
+		cfg.ProviderConfig.SmallModel = value
+
 	default:
 		return fmt.Errorf("unknown config key: %s (valid: %s)", key, strings.Join(ValidKeys(), ", "))
 	}
@@ -236,4 +254,12 @@ func MaskedToken(token string) string {
 		return "***"
 	}
 	return "***..." + token[len(token)-6:]
+}
+
+// EffectiveProvider returns the configured provider or the default.
+func (c *Config) EffectiveProvider() Provider {
+	if c.ProviderConfig.Provider != "" {
+		return c.ProviderConfig.Provider
+	}
+	return ProviderAnthropic
 }
