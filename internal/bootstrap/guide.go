@@ -180,25 +180,7 @@ func GenerateGuide(env *Environment, installDir string) string {
 }
 
 func temporalCompose() string {
-	return `services:
-  temporal:
-    image: temporalio/auto-setup:latest
-    ports:
-      - "7233:7233"
-    environment:
-      - DB=sqlite
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-      - SKIP_DEFAULT_NAMESPACE_CREATION=false
-
-  temporal-ui:
-    image: temporalio/ui:latest
-    ports:
-      - "8233:8080"
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-    depends_on:
-      - temporal
-`
+	return TemporalComposeLocal()
 }
 
 func installInstructions(env *Environment, missing []string) string {
