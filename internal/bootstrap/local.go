@@ -183,13 +183,13 @@ func setupTemporal(installDir string, cfg *Config, printer Printer) error {
 	printer.Info("Docker containers starting...")
 
 	// Wait for Temporal to be ready (up to 60s)
-	printer.Info("Waiting for Temporal to be ready (this may take up to 60s)...")
-	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s/api/v1/namespaces", cfg.TemporalPort), 60*time.Second); err != nil {
+	printer.Info("Waiting for Temporal to be ready (this may take up to 120s)...")
+	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s/api/v1/namespaces", cfg.TemporalPort), 120*time.Second); err != nil {
 		// Check container status for debugging
 		statusCmd := exec.Command("docker", "compose", "ps", "--format", "{{.Name}}\t{{.Status}}")
 		statusCmd.Dir = temporalDir
 		statusOut, _ := statusCmd.CombinedOutput()
-		return fmt.Errorf("temporal not ready after 60s: %w\nContainer status:\n%s", err, string(statusOut))
+		return fmt.Errorf("temporal not ready after 120s: %w\nContainer status:\n%s", err, string(statusOut))
 	}
 	printer.Success("Temporal is ready")
 	return nil
@@ -492,6 +492,7 @@ func TemporalComposeLocal() string {
       - "7233:7233"
     environment:
       - DB=postgres12
+      - DB_PORT=5432
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
       - POSTGRES_SEEDS=postgres
