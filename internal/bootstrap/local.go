@@ -161,6 +161,22 @@ func SetupLocal(env *Environment, installDir string, cfg *Config, printer Printe
 	return result, nil
 }
 
+
+// killProcessOnPort attempts to kill any process listening on the given port.
+func killProcessOnPort(port string) {
+	// Use lsof to find the PID
+	out, err := exec.Command("lsof", "-ti", fmt.Sprintf("tcp:%s", port)).Output()
+	if err != nil || len(out) == 0 {
+		return // nothing listening
+	}
+	for _, pidStr := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if pidStr != "" {
+			exec.Command("kill", "-9", pidStr).Run()
+		}
+	}
+	// Give it a moment to release the port
+	time.Sleep(500 * time.Millisecond)
+}
 func setupTemporal(installDir string, cfg *Config, printer Printer) error {
 	temporalDir := filepath.Join(installDir, "temporal")
 	if err := os.MkdirAll(temporalDir, 0755); err != nil {
@@ -239,6 +255,9 @@ API_BEARER_TOKEN=%s
 	if err := os.WriteFile(filepath.Join(apiDir, ".env"), []byte(envContent), 0600); err != nil {
 		return fmt.Errorf("writing .env: %w", err)
 	}
+
+	// Kill any existing process on the API port
+	killProcessOnPort(cfg.APIPort)
 
 	// Start API in background
 	printer.Info("Starting API server...")
@@ -332,6 +351,9 @@ DEFAULT_MODEL=%s
 		return fmt.Errorf("writing .env: %w", err)
 	}
 
+	// Kill any existing worker process
+	killProcessOnPort(cfg.TemporalPort) // workers connect to temporal, not a specific port
+
 	// Start worker in background
 	printer.Info("Starting worker...")
 	logFile, err := os.Create(filepath.Join(workerDir, "worker.log"))
@@ -399,6 +421,9 @@ func setupUI(installDir string, cfg *Config, printer Printer) error {
 	if err := os.WriteFile(filepath.Join(uiDir, ".env.local"), []byte(envContent), 0644); err != nil {
 		return fmt.Errorf("writing .env.local: %w", err)
 	}
+
+	// Kill any existing process on the UI port
+	killProcessOnPort(cfg.UIPort)
 
 	// Start UI in background
 	printer.Info("Starting UI dev server...")
