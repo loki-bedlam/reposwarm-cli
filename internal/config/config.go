@@ -3,6 +3,7 @@ package config
 
 import (
 	"encoding/json"
+	"github.com/loki-bedlam/reposwarm-cli/internal/bootstrap"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,7 +25,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		APIUrl:       "http://localhost:3000/v1",
 		Region:       "us-east-1",
-		DefaultModel: "us.anthropic.claude-sonnet-4-6",
+		DefaultModel: bootstrap.DefaultModel,
 		ChunkSize:    10,
 		OutputFormat: "pretty",
 	}

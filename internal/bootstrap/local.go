@@ -129,9 +129,9 @@ func SetupLocal(env *Environment, installDir string, printer Printer) (*LocalSet
 		printer.Warning("RepoSwarm started with some issues (see above)")
 	}
 	printer.Printf("")
-	printer.Printf("  Temporal UI:  http://localhost:8233")
-	printer.Printf("  API Server:   http://localhost:3000")
-	printer.Printf("  UI:           http://localhost:3001")
+	printer.Printf("  Temporal UI:  http://localhost:%s", DefaultTemporalUIPort)
+	printer.Printf("  API Server:   http://localhost:%s", DefaultAPIPort)
+	printer.Printf("  UI:           http://localhost:%s", DefaultUIPort)
 	printer.Printf("")
 	printer.Printf("  API Token:    %s", token)
 	printer.Printf("  Logs:         %s/*/%.log", installDir)
@@ -168,7 +168,7 @@ func setupTemporal(installDir string, printer Printer) error {
 
 	// Wait for Temporal to be ready (up to 60s)
 	printer.Info("Waiting for Temporal to be ready (this may take up to 60s)...")
-	if err := waitForHTTP("http://localhost:7233/api/v1/namespaces", 60*time.Second); err != nil {
+	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s/api/v1/namespaces", DefaultTemporalPort), 60*time.Second); err != nil {
 		// Check container status for debugging
 		statusCmd := exec.Command("docker", "compose", "ps", "--format", "{{.Name}}\t{{.Status}}")
 		statusCmd.Dir = temporalDir
@@ -185,7 +185,7 @@ func setupAPI(installDir, region, token string, printer Printer) error {
 	// Clone
 	if _, err := os.Stat(apiDir); os.IsNotExist(err) {
 		printer.Info("Cloning API server...")
-		cmd := exec.Command("git", "clone", "https://github.com/loki-bedlam/reposwarm-api.git", "api")
+		cmd := exec.Command("git", "clone", DefaultAPIRepoURL, "api")
 		cmd.Dir = installDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git clone failed: %w\n%s", err, string(out))
@@ -211,15 +211,15 @@ func setupAPI(installDir, region, token string, printer Printer) error {
 	}
 
 	// Write .env
-	envContent := fmt.Sprintf(`PORT=3000
-TEMPORAL_ADDRESS=localhost:7233
+	envContent := fmt.Sprintf(`PORT=%s
+TEMPORAL_ADDRESS=localhost:%s
 TEMPORAL_NAMESPACE=default
 TEMPORAL_TASK_QUEUE=investigate-task-queue
 AWS_REGION=%s
-DYNAMODB_TABLE=reposwarm-cache
+DYNAMODB_TABLE=%s
 BEARER_TOKEN=%s
 AUTH_MODE=local
-`, region, token)
+`, DefaultAPIPort, DefaultTemporalPort, region, DefaultDynamoDBTable, token)
 
 	if err := os.WriteFile(filepath.Join(apiDir, ".env"), []byte(envContent), 0600); err != nil {
 		return fmt.Errorf("writing .env: %w", err)
@@ -248,7 +248,7 @@ AUTH_MODE=local
 
 	// Wait for API
 	printer.Info("Waiting for API to be ready...")
-	if err := waitForHTTP("http://localhost:3000/v1/health", 30*time.Second); err != nil {
+	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s/v1/health", DefaultAPIPort), 30*time.Second); err != nil {
 		return fmt.Errorf("API not ready after 30s: %w", err)
 	}
 	printer.Success("API server is ready")
@@ -261,7 +261,7 @@ func setupWorker(installDir, region string, printer Printer) error {
 	// Clone
 	if _, err := os.Stat(workerDir); os.IsNotExist(err) {
 		printer.Info("Cloning worker...")
-		cmd := exec.Command("git", "clone", "https://github.com/royosherove/repo-swarm.git", "worker")
+		cmd := exec.Command("git", "clone", DefaultWorkerRepoURL, "worker")
 		cmd.Dir = installDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git clone failed: %w\n%s", err, string(out))
@@ -288,13 +288,13 @@ func setupWorker(installDir, region string, printer Printer) error {
 	}
 
 	// Write .env
-	envContent := fmt.Sprintf(`TEMPORAL_ADDRESS=localhost:7233
+	envContent := fmt.Sprintf(`TEMPORAL_ADDRESS=localhost:%s
 TEMPORAL_NAMESPACE=default
 TEMPORAL_TASK_QUEUE=investigate-task-queue
 AWS_REGION=%s
-DYNAMODB_TABLE=reposwarm-cache
-DEFAULT_MODEL=us.anthropic.claude-sonnet-4-6
-`, region)
+DYNAMODB_TABLE=%s
+DEFAULT_MODEL=%s
+`, DefaultTemporalPort, region, DefaultDynamoDBTable, DefaultModel)
 
 	if err := os.WriteFile(filepath.Join(workerDir, ".env"), []byte(envContent), 0600); err != nil {
 		return fmt.Errorf("writing .env: %w", err)
@@ -314,12 +314,12 @@ DEFAULT_MODEL=us.anthropic.claude-sonnet-4-6
 	startCmd.Stderr = logFile
 	// Pass env vars explicitly since .env isn't auto-loaded
 	startCmd.Env = append(os.Environ(),
-		"TEMPORAL_ADDRESS=localhost:7233",
+		fmt.Sprintf("TEMPORAL_ADDRESS=localhost:%s", DefaultTemporalPort),
 		"TEMPORAL_NAMESPACE=default",
 		"TEMPORAL_TASK_QUEUE=investigate-task-queue",
 		fmt.Sprintf("AWS_REGION=%s", region),
-		"DYNAMODB_TABLE=reposwarm-cache",
-		"DEFAULT_MODEL=us.anthropic.claude-sonnet-4-6",
+		fmt.Sprintf("DYNAMODB_TABLE=%s", DefaultDynamoDBTable),
+		fmt.Sprintf("DEFAULT_MODEL=%s", DefaultModel),
 	)
 	if err := startCmd.Start(); err != nil {
 		logFile.Close()
@@ -340,7 +340,7 @@ func setupUI(installDir string, printer Printer) error {
 	// Clone
 	if _, err := os.Stat(uiDir); os.IsNotExist(err) {
 		printer.Info("Cloning UI...")
-		cmd := exec.Command("git", "clone", "https://github.com/loki-bedlam/reposwarm-ui.git", "ui")
+		cmd := exec.Command("git", "clone", DefaultUIRepoURL, "ui")
 		cmd.Dir = installDir
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("git clone failed: %w\n%s", err, string(out))
@@ -385,7 +385,7 @@ func setupUI(installDir string, printer Printer) error {
 
 	// Wait for UI
 	printer.Info("Waiting for UI to be ready...")
-	if err := waitForHTTP("http://localhost:3001", 30*time.Second); err != nil {
+	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s", DefaultUIPort), 30*time.Second); err != nil {
 		printer.Warning("UI not responding yet — it may still be compiling (check ui/ui.log)")
 		return nil // Non-fatal
 	}
@@ -403,14 +403,14 @@ func configureCLI(token string) error {
 		return err
 	}
 	configContent := fmt.Sprintf(`{
-  "apiUrl": "http://localhost:3000/v1",
+  "apiUrl": "http://localhost:%s/v1",
   "apiToken": "%s",
   "region": "us-east-1",
-  "defaultModel": "us.anthropic.claude-sonnet-4-6",
+  "defaultModel": "%s",
   "chunkSize": 10,
   "outputFormat": "pretty"
 }
-`, token)
+`, DefaultAPIPort, token, DefaultModel)
 	return os.WriteFile(filepath.Join(configDir, "config.json"), []byte(configContent), 0600)
 }
 
@@ -419,9 +419,9 @@ func verifyServices(printer Printer) LocalStepResult {
 		name string
 		url  string
 	}{
-		{"Temporal", "http://localhost:7233/api/v1/namespaces"},
-		{"API", "http://localhost:3000/v1/health"},
-		{"UI", "http://localhost:3001"},
+		{"Temporal", fmt.Sprintf("http://localhost:%s/api/v1/namespaces", DefaultTemporalPort)},
+		{"API", fmt.Sprintf("http://localhost:%s/v1/health", DefaultAPIPort)},
+		{"UI", fmt.Sprintf("http://localhost:%s", DefaultUIPort)},
 	}
 
 	allOK := true
