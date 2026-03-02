@@ -1,110 +1,103 @@
 package commands
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
 	"time"
 
-	"github.com/fatih/color"
-	"github.com/loki-bedlam/reposwarm-cli/internal/config"
 	"github.com/loki-bedlam/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
-var (
-	serviceColors = map[string]func(a ...interface{}) string{
-		"api":      color.New(color.FgBlue).SprintFunc(),
-		"worker":   color.New(color.FgGreen).SprintFunc(),
-		"temporal": color.New(color.FgCyan).SprintFunc(),
-		"ui":       color.New(color.FgMagenta).SprintFunc(),
-	}
-)
-
 func newLogsCmd() *cobra.Command {
-	var (
-		tail  bool
-		lines int
-	)
+	var tail bool
+	var lines int
 
 	cmd := &cobra.Command{
 		Use:   "logs [service]",
-		Short: "Show/tail logs from local services",
-		Long: `Show or tail logs from local RepoSwarm services.
+		Short: "View service logs via API",
+		Long: `View logs for a RepoSwarm service.
 
 Available services: api, worker, temporal, ui
 
-If no service is specified, shows logs from all services.
-This command only works with local RepoSwarm installations.`,
-		Args: cobra.MaximumNArgs(1),
+If no service is specified, shows logs from all services.`,
+		Args: friendlyMaxArgs(1, "reposwarm logs [service]\n\nServices: api, worker, temporal, ui\n\nExample:\n  reposwarm logs worker -n 100"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Resolve install directory from config, then auto-detect
-			cfg, _ := config.Load()
-			installDir := ""
-			if cfg != nil {
-				installDir = cfg.EffectiveInstallDir()
+			client, err := getClient()
+			if err != nil {
+				return err
 			}
 
-			// Auto-detect: check multiple possible log locations
-			logsDir, logLayout := findLogsDir(installDir)
-			if logsDir == "" {
-				checked := installDir
-				if checked == "" {
-					checked = "~/reposwarm"
-				}
-				return fmt.Errorf("no log files found\n\nChecked:\n  %s/logs/\n  %s/*/\n\nSet install path: reposwarm config set installDir /path/to/reposwarm", checked, checked)
-			}
-			_ = logLayout
-
-			// Determine which services to show
 			services := []string{"api", "worker", "temporal", "ui"}
 			if len(args) > 0 {
-				service := args[0]
-				// Validate service name
+				svc := args[0]
 				valid := false
 				for _, s := range services {
-					if s == service {
+					if s == svc {
 						valid = true
 						break
 					}
 				}
 				if !valid {
-					return fmt.Errorf("invalid service: %s (must be one of: api, worker, temporal, ui)", service)
+					return fmt.Errorf("invalid service: %s (must be one of: api, worker, temporal, ui)", svc)
 				}
-				services = []string{service}
+				services = []string{svc}
 			}
 
-			// Check which log files exist (try both log layouts)
-			var existingServices []string
-			for _, service := range services {
-				logFile := resolveLogFile(logsDir, logLayout, service)
-				if _, err := os.Stat(logFile); err == nil {
-					existingServices = append(existingServices, service)
-				}
-			}
-
-			if len(existingServices) == 0 {
-				output.F.Warning("No log files found. Services may not be running.")
-				output.F.Info(fmt.Sprintf("Checked directory: %s", logsDir))
-				return nil
-			}
-
-			// Handle tail mode
 			if tail {
-				return tailLogs(logsDir, existingServices, logLayout)
+				// Follow mode: poll every 2s
+				for {
+					for _, svc := range services {
+						var resp struct {
+							Service string   `json:"service"`
+							Lines   []string `json:"lines"`
+							Total   int      `json:"total"`
+						}
+						path := fmt.Sprintf("/services/%s/logs?lines=%d", svc, lines)
+						if err := client.Get(ctx(), path, &resp); err != nil {
+							continue
+						}
+						for _, l := range resp.Lines {
+							if len(services) > 1 {
+								fmt.Printf("[%s] %s\n", output.Cyan(svc), l)
+							} else {
+								fmt.Println(l)
+							}
+						}
+					}
+					time.Sleep(2 * time.Second)
+				}
 			}
 
-			// Read last N lines from each service
-			for _, service := range existingServices {
-				logFile := resolveLogFile(logsDir, logLayout, service)
-				if err := showLogFile(service, logFile, lines); err != nil {
-					output.F.Warning(fmt.Sprintf("Error reading %s logs: %v", service, err))
+			// Non-follow: single fetch
+			for _, svc := range services {
+				var resp struct {
+					Service string   `json:"service"`
+					LogFile *string  `json:"logFile"`
+					Lines   []string `json:"lines"`
+					Total   int      `json:"total"`
 				}
+				path := fmt.Sprintf("/services/%s/logs?lines=%d", svc, lines)
+				if err := client.Get(ctx(), path, &resp); err != nil {
+					if !flagJSON {
+						output.F.Warning(fmt.Sprintf("Error reading %s logs: %v", svc, err))
+					}
+					continue
+				}
+
+				if flagJSON {
+					output.JSON(resp)
+					continue
+				}
+
+				if len(resp.Lines) == 0 {
+					continue
+				}
+
+				output.F.Section(fmt.Sprintf("%s logs (%d lines)", svc, len(resp.Lines)))
+				for _, l := range resp.Lines {
+					fmt.Printf("  %s\n", l)
+				}
+				output.F.Println()
 			}
 
 			return nil
@@ -113,318 +106,5 @@ This command only works with local RepoSwarm installations.`,
 
 	cmd.Flags().BoolVarP(&tail, "tail", "f", false, "Follow/stream logs")
 	cmd.Flags().IntVarP(&lines, "lines", "n", 50, "Number of lines to show")
-
 	return cmd
-}
-
-// findLogsDir locates the logs directory and determines the layout.
-// Returns (dir, layout) where layout is "flat" ({dir}/worker.log) or "nested" ({dir}/worker/worker.log).
-func findLogsDir(installDir string) (string, string) {
-	if installDir == "" {
-		homeDir, _ := os.UserHomeDir()
-		installDir = filepath.Join(homeDir, "reposwarm")
-	}
-
-	// Try flat layout: {installDir}/logs/*.log
-	flatDir := filepath.Join(installDir, "logs")
-	if entries, err := os.ReadDir(flatDir); err == nil {
-		for _, e := range entries {
-			if strings.HasSuffix(e.Name(), ".log") {
-				return flatDir, "flat"
-			}
-		}
-	}
-
-	// Try nested layout: {installDir}/{service}/{service}.log
-	for _, svc := range []string{"api", "worker", "temporal", "ui"} {
-		logFile := filepath.Join(installDir, svc, svc+".log")
-		if _, err := os.Stat(logFile); err == nil {
-			return installDir, "nested"
-		}
-	}
-
-	// Try nested layout: {installDir}/{service}/*.log
-	for _, svc := range []string{"api", "worker", "temporal", "ui"} {
-		svcDir := filepath.Join(installDir, svc)
-		if entries, err := os.ReadDir(svcDir); err == nil {
-			for _, e := range entries {
-				if strings.HasSuffix(e.Name(), ".log") {
-					return installDir, "nested"
-				}
-			}
-		}
-	}
-
-	return "", ""
-}
-
-// resolveLogFile returns the path to a service's log file based on layout.
-func resolveLogFile(baseDir, layout, service string) string {
-	if layout == "flat" {
-		return filepath.Join(baseDir, service+".log")
-	}
-	// Nested: try {baseDir}/{service}/{service}.log first, then any .log in the subdir
-	primary := filepath.Join(baseDir, service, service+".log")
-	if _, err := os.Stat(primary); err == nil {
-		return primary
-	}
-	// Scan for any .log file in the service subdir
-	svcDir := filepath.Join(baseDir, service)
-	if entries, err := os.ReadDir(svcDir); err == nil {
-		for _, e := range entries {
-			if strings.HasSuffix(e.Name(), ".log") {
-				return filepath.Join(svcDir, e.Name())
-			}
-		}
-	}
-	return primary // fallback
-}
-
-func showLogFile(service, logFile string, maxLines int) error {
-	file, err := os.Open(logFile)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// Read all lines
-	var allLines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		allLines = append(allLines, scanner.Text())
-	}
-
-	// Get last N lines
-	start := 0
-	if len(allLines) > maxLines && maxLines > 0 {
-		start = len(allLines) - maxLines
-	}
-
-	F := output.F
-	colorFunc := serviceColors[service]
-	if colorFunc == nil {
-		colorFunc = fmt.Sprint
-	}
-
-	F.Section(colorFunc(fmt.Sprintf("%s logs", strings.ToUpper(service))))
-	for i := start; i < len(allLines); i++ {
-		if flagJSON {
-			// Parse timestamp if possible and output as JSON
-			line := allLines[i]
-			timestamp := ""
-			// Try to extract timestamp (common formats)
-			parts := strings.SplitN(line, " ", 3)
-			if len(parts) >= 2 {
-				// Try parsing first two parts as timestamp
-				if t, err := time.Parse("2006-01-02 15:04:05", parts[0]+" "+parts[1]); err == nil {
-					timestamp = t.Format(time.RFC3339)
-				}
-			}
-			jsonLine := map[string]string{
-				"service":   service,
-				"line":      line,
-				"timestamp": timestamp,
-			}
-			data, _ := json.Marshal(jsonLine)
-			fmt.Println(string(data))
-		} else {
-			F.Println(allLines[i])
-		}
-	}
-	F.Println()
-
-	return nil
-}
-
-func tailLogs(logsDir string, services []string, layouts ...string) error {
-	F := output.F
-	F.Info(fmt.Sprintf("Tailing logs from: %s", strings.Join(services, ", ")))
-	F.Info("Press Ctrl+C to stop")
-	F.Println()
-
-	// Open all log files
-	type logReader struct {
-		service string
-		file    *os.File
-		reader  *bufio.Reader
-	}
-
-	var readers []logReader
-	layout := "flat"
-	if len(layouts) > 0 {
-		layout = layouts[0]
-	}
-	for _, service := range services {
-		logFile := resolveLogFile(logsDir, layout, service)
-		file, err := os.Open(logFile)
-		if err != nil {
-			continue
-		}
-		defer file.Close()
-
-		// Seek to end of file
-		file.Seek(0, io.SeekEnd)
-		readers = append(readers, logReader{
-			service: service,
-			file:    file,
-			reader:  bufio.NewReader(file),
-		})
-	}
-
-	// Poll for new lines
-	for {
-		hasNewContent := false
-		for _, lr := range readers {
-			for {
-				line, err := lr.reader.ReadString('\n')
-				if err != nil {
-					break // No more lines available
-				}
-				hasNewContent = true
-
-				// Format and print the line
-				colorFunc := serviceColors[lr.service]
-				if colorFunc == nil {
-					colorFunc = fmt.Sprint
-				}
-
-				if flagJSON {
-					timestamp := ""
-					// Try to extract timestamp
-					parts := strings.SplitN(strings.TrimSpace(line), " ", 3)
-					if len(parts) >= 2 {
-						if t, err := time.Parse("2006-01-02 15:04:05", parts[0]+" "+parts[1]); err == nil {
-							timestamp = t.Format(time.RFC3339)
-						}
-					}
-					jsonLine := map[string]string{
-						"service":   lr.service,
-						"line":      strings.TrimSpace(line),
-						"timestamp": timestamp,
-					}
-					data, _ := json.Marshal(jsonLine)
-					fmt.Println(string(data))
-				} else {
-					F.Printf("[%s] %s", colorFunc(lr.service), line)
-				}
-			}
-		}
-
-		if !hasNewContent {
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
-}
-
-// logEntry represents a single log line with metadata for sorting
-type logEntry struct {
-	service   string
-	timestamp time.Time
-	line      string
-}
-
-func parseLogTimestamp(line string) (time.Time, bool) {
-	// Try common timestamp formats
-	formats := []string{
-		"2006-01-02 15:04:05",
-		"2006-01-02T15:04:05",
-		"2006-01-02T15:04:05Z",
-		"2006-01-02T15:04:05.000Z",
-	}
-
-	parts := strings.SplitN(line, " ", 3)
-	if len(parts) < 2 {
-		return time.Time{}, false
-	}
-
-	timeStr := parts[0] + " " + parts[1]
-	for _, format := range formats {
-		if t, err := time.Parse(format, timeStr); err == nil {
-			return t, true
-		}
-	}
-
-	// Try just the first part for ISO format
-	for _, format := range formats {
-		if t, err := time.Parse(format, parts[0]); err == nil {
-			return t, true
-		}
-	}
-
-	return time.Time{}, false
-}
-
-// interleaveLogs combines logs from multiple services sorted by timestamp
-func interleaveLogs(logsDir string, services []string, maxLines int) error {
-	var allEntries []logEntry
-
-	// Read all log files
-	for _, service := range services {
-		logFile := filepath.Join(logsDir, service+".log")
-		file, err := os.Open(logFile)
-		if err != nil {
-			continue
-		}
-		defer file.Close()
-
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := scanner.Text()
-			entry := logEntry{
-				service: service,
-				line:    line,
-			}
-
-			// Try to parse timestamp
-			if t, ok := parseLogTimestamp(line); ok {
-				entry.timestamp = t
-			}
-
-			allEntries = append(allEntries, entry)
-		}
-	}
-
-	// Sort by timestamp
-	sort.Slice(allEntries, func(i, j int) bool {
-		// If both have timestamps, sort by time
-		if !allEntries[i].timestamp.IsZero() && !allEntries[j].timestamp.IsZero() {
-			return allEntries[i].timestamp.Before(allEntries[j].timestamp)
-		}
-		// Otherwise maintain original order
-		return false
-	})
-
-	// Get last N entries
-	start := 0
-	if len(allEntries) > maxLines && maxLines > 0 {
-		start = len(allEntries) - maxLines
-	}
-
-	F := output.F
-	F.Section("Interleaved Logs")
-	for i := start; i < len(allEntries); i++ {
-		entry := allEntries[i]
-		colorFunc := serviceColors[entry.service]
-		if colorFunc == nil {
-			colorFunc = fmt.Sprint
-		}
-
-		if flagJSON {
-			timestamp := ""
-			if !entry.timestamp.IsZero() {
-				timestamp = entry.timestamp.Format(time.RFC3339)
-			}
-			jsonLine := map[string]string{
-				"service":   entry.service,
-				"line":      entry.line,
-				"timestamp": timestamp,
-			}
-			data, _ := json.Marshal(jsonLine)
-			fmt.Println(string(data))
-		} else {
-			F.Printf("[%s] %s\n", colorFunc(entry.service), entry.line)
-		}
-	}
-
-	return nil
 }

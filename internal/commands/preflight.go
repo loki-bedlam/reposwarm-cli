@@ -149,22 +149,38 @@ func runPreflightChecks(repo string) []preflightCheck {
 		checks = append(checks, preflightCheck{"Workers", "fail", "no workers detected"})
 	}
 
-	// 4. Worker env
-	envChecks := getWorkerEnvChecks()
-	var missingEnv []string
-	for _, ec := range envChecks {
-		if !ec.found && ec.name != "AWS_ACCESS_KEY_ID" && ec.name != "AWS_SECRET_ACCESS_KEY" {
-			missingEnv = append(missingEnv, ec.name)
-		}
+	// 4. Worker env (via API)
+	var envResp struct {
+		Entries []struct {
+			Key string `json:"key"`
+			Set bool   `json:"set"`
+		} `json:"entries"`
 	}
-	if len(missingEnv) > 0 {
-		checks = append(checks, preflightCheck{
-			"Worker env",
-			"fail",
-			fmt.Sprintf("missing: %s", strings.Join(missingEnv, ", ")),
-		})
+	if err := client.Get(ctx(), "/workers/worker-1/env", &envResp); err == nil {
+		required := []string{"ANTHROPIC_API_KEY", "GITHUB_TOKEN"}
+		var missingEnv []string
+		entryMap := map[string]bool{}
+		for _, e := range envResp.Entries {
+			if e.Set {
+				entryMap[e.Key] = true
+			}
+		}
+		for _, req := range required {
+			if !entryMap[req] {
+				missingEnv = append(missingEnv, req)
+			}
+		}
+		if len(missingEnv) > 0 {
+			checks = append(checks, preflightCheck{
+				"Worker env",
+				"fail",
+				fmt.Sprintf("missing: %s", strings.Join(missingEnv, ", ")),
+			})
+		} else {
+			checks = append(checks, preflightCheck{"Worker env", "ok", "all required vars set"})
+		}
 	} else {
-		checks = append(checks, preflightCheck{"Worker env", "ok", "all required vars set"})
+		checks = append(checks, preflightCheck{"Worker env", "warn", "could not check (API endpoint unavailable)"})
 	}
 
 	// 5. Repo access (if specified)

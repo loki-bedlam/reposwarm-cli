@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"bufio"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -367,17 +365,8 @@ func checkStalledWorkflows() []checkResult {
 func checkWorkerEnv() []checkResult {
 	var results []checkResult
 
-	cfg, err := config.Load()
+	client, err := getClient()
 	if err != nil {
-		return results
-	}
-
-	installDir := cfg.EffectiveInstallDir()
-	envFile := filepath.Join(installDir, "worker", ".env")
-
-	// Check if local install exists
-	if _, err := os.Stat(installDir); os.IsNotExist(err) {
-		// Not a local install, skip
 		return results
 	}
 
@@ -386,117 +375,49 @@ func checkWorkerEnv() []checkResult {
 		output.F.Section("Worker Environment")
 	}
 
-	// Read .env file if it exists
-	envVars := make(map[string]bool)
-	if data, err := os.ReadFile(envFile); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) == 2 && strings.TrimSpace(parts[1]) != "" {
-				envVars[parts[0]] = true
-			}
-		}
+	// Fetch worker env from API
+	var envResp struct {
+		Entries []struct {
+			Key    string `json:"key"`
+			Set    bool   `json:"set"`
+		} `json:"entries"`
+	}
+	if err := client.Get(ctx(), "/workers/worker-1/env", &envResp); err != nil {
+		// API doesn't support /workers endpoint yet — skip silently
+		return results
 	}
 
-	// Also check actual environment
-	checkEnv := func(name string) bool {
-		if envVars[name] {
-			return true
-		}
-		return os.Getenv(name) != ""
+	required := map[string]string{
+		"ANTHROPIC_API_KEY": "Anthropic API key (for LLM calls)",
+		"GITHUB_TOKEN":      "GitHub token (for repo access)",
 	}
 
-	// Required vars
-	required := []struct {
-		name string
-		alts []string // alternative names
-		desc string
-	}{
-		{"ANTHROPIC_API_KEY", nil, "Anthropic API key (for LLM calls)"},
-		{"GITHUB_TOKEN", []string{"GITHUB_PAT"}, "GitHub token (for repo access)"},
-	}
-
-	for _, req := range required {
-		found := checkEnv(req.name)
-		if !found {
-			for _, alt := range req.alts {
-				if checkEnv(alt) {
-					found = true
-					break
-				}
-			}
+	for _, entry := range envResp.Entries {
+		desc, isRequired := required[entry.Key]
+		if !isRequired {
+			continue
 		}
-		if found {
-			c := checkResult{req.name, "ok", "set"}
+		if entry.Set {
+			c := checkResult{entry.Key, "ok", "set"}
 			printCheck(c)
 			results = append(results, c)
 		} else {
-			allNames := req.name
-			if len(req.alts) > 0 {
-				allNames += "/" + strings.Join(req.alts, "/")
-			}
-			c := checkResult{allNames, "fail", fmt.Sprintf("NOT SET — %s", req.desc)}
+			c := checkResult{entry.Key, "fail", fmt.Sprintf("NOT SET \u2014 %s", desc)}
 			printCheck(c)
 			results = append(results, c)
-		}
-	}
-
-	// AWS credentials (env vars or instance profile)
-	hasAWSEnv := checkEnv("AWS_ACCESS_KEY_ID") && checkEnv("AWS_SECRET_ACCESS_KEY")
-	if hasAWSEnv {
-		c := checkResult{"AWS credentials", "ok", "set (env vars)"}
-		printCheck(c)
-		results = append(results, c)
-	} else {
-		// Check for instance metadata (EC2 role)
-		client := &http.Client{Timeout: 1 * time.Second}
-		req, _ := http.NewRequest("PUT", "http://169.254.169.254/latest/api/token", nil)
-		if req != nil {
-			req.Header.Set("X-aws-ec2-metadata-token-ttl-seconds", "21600")
-			resp, err := client.Do(req)
-			if err == nil {
-				resp.Body.Close()
-				c := checkResult{"AWS credentials", "ok", "set (instance profile)"}
-				printCheck(c)
-				results = append(results, c)
-			} else {
-				c := checkResult{"AWS credentials", "warn", "not found (no env vars or instance profile)"}
-				printCheck(c)
-				results = append(results, c)
-			}
 		}
 	}
 
 	return results
 }
 
+
 func checkWorkerLogs() []checkResult {
 	var results []checkResult
 
-	cfg, err := config.Load()
+	client, err := getClient()
 	if err != nil {
 		return results
-	}
-
-	installDir := cfg.EffectiveInstallDir()
-
-	// Try multiple log locations
-	candidates := []string{
-		filepath.Join(installDir, "logs", "worker.log"),
-		filepath.Join(installDir, "worker", "worker.log"),
-	}
-	logFile := ""
-	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
-			logFile = c
-			break
-		}
-	}
-	if logFile == "" {
-		return results // No log file found, skip silently
 	}
 
 	if !flagJSON {
@@ -504,30 +425,21 @@ func checkWorkerLogs() []checkResult {
 		output.F.Section("Worker Logs")
 	}
 
-	// Read last 20 lines and check for errors
-	f, err := os.Open(logFile)
-	if err != nil {
-		c := checkResult{"Worker log", "warn", fmt.Sprintf("cannot read: %s", err)}
-		printCheck(c)
-		return append(results, c)
+	var logResp struct {
+		Lines []string `json:"lines"`
 	}
-	defer f.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
+	if err := client.Get(ctx(), "/services/worker/logs?lines=20", &logResp); err != nil {
+		return results
 	}
 
-	// Keep last 20 lines
-	if len(lines) > 20 {
-		lines = lines[len(lines)-20:]
+	if len(logResp.Lines) == 0 {
+		return results
 	}
 
-	// Scan for error patterns
-	errorPatterns := []string{"error", "Error", "ERROR", "failed", "Failed", "FAILED", "Traceback", "traceback", "Exception", "ValidationError"}
+	// Scan for errors
+	errorPatterns := []string{"error", "Error", "ERROR", "failed", "Failed", "FAILED", "Traceback", "Exception", "ValidationError"}
 	var errorLines []string
-	for _, line := range lines {
+	for _, line := range logResp.Lines {
 		for _, pattern := range errorPatterns {
 			if strings.Contains(line, pattern) {
 				errorLines = append(errorLines, line)
@@ -537,7 +449,6 @@ func checkWorkerLogs() []checkResult {
 	}
 
 	if len(errorLines) > 0 {
-		// Trim to last 5 error lines
 		shown := errorLines
 		if len(shown) > 5 {
 			shown = shown[len(shown)-5:]
@@ -564,6 +475,7 @@ func checkWorkerLogs() []checkResult {
 
 	return results
 }
+
 
 func countStatus(checks []checkResult, status string) int {
 	n := 0

@@ -45,6 +45,11 @@ func (c *Client) Post(ctx context.Context, path string, body any, result any) er
 	return c.do(ctx, http.MethodPost, path, body, result)
 }
 
+// Put performs a PUT request and unmarshals the response data.
+func (c *Client) Put(ctx context.Context, path string, body any, result any) error {
+	return c.do(ctx, http.MethodPut, path, body, result)
+}
+
 // Patch performs a PATCH request and unmarshals the response data.
 func (c *Client) Patch(ctx context.Context, path string, body any, result any) error {
 	return c.do(ctx, http.MethodPatch, path, body, result)
