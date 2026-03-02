@@ -64,11 +64,13 @@ func TestSummary(t *testing.T) {
 
 func TestMissingDeps(t *testing.T) {
 	env := &Environment{
-		HasDocker:  false,
-		HasCompose: false,
-		HasNode:    true,
-		HasPython:  true,
-		HasGit:     true,
+		HasDocker:     false,
+		HasCompose:    false,
+		HasNode:       true,
+		HasNpm:        true,
+		HasPython:     true,
+		HasPythonVenv: true,
+		HasGit:        true,
 	}
 	missing := env.MissingDeps()
 	if len(missing) != 2 {
@@ -78,11 +80,13 @@ func TestMissingDeps(t *testing.T) {
 
 func TestMissingDepsAllPresent(t *testing.T) {
 	env := &Environment{
-		HasDocker:  true,
-		HasCompose: true,
-		HasNode:    true,
-		HasPython:  true,
-		HasGit:     true,
+		HasDocker:     true,
+		HasCompose:    true,
+		HasNode:       true,
+		HasNpm:        true,
+		HasPython:     true,
+		HasPythonVenv: true,
+		HasGit:        true,
 	}
 	missing := env.MissingDeps()
 	if len(missing) != 0 {

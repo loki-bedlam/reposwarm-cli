@@ -27,6 +27,7 @@ type Environment struct {
 	NodeVer      string `json:"nodeVersion,omitempty"`
 	HasPython    bool   `json:"hasPython"`
 	PythonVer    string `json:"pythonVersion,omitempty"`
+	HasPythonVenv bool  `json:"hasPythonVenv"`
 	HasGo        bool   `json:"hasGo"`
 	GoVer        string `json:"goVersion,omitempty"`
 	HasGit       bool   `json:"hasGit"`
@@ -66,6 +67,11 @@ func Detect() *Environment {
 	env.ComposeVer, env.HasCompose = cmdVersion("docker", "compose", "version")
 	env.NodeVer, env.HasNode = cmdVersion("node", "--version")
 	env.PythonVer, env.HasPython = cmdVersionAny([][]string{{"python3", "--version"}, {"python", "--version"}})
+	if env.HasPython {
+		// Check if python3-venv/ensurepip is available
+		cmd := exec.Command("python3", "-c", "import ensurepip")
+		env.HasPythonVenv = cmd.Run() == nil
+	}
 	env.GoVer, env.HasGo = cmdVersion("go", "version")
 	env.GitVer, env.HasGit = cmdVersion("git", "--version")
 
@@ -115,11 +121,17 @@ func (e *Environment) MissingDeps() []string {
 	if !e.HasCompose {
 		missing = append(missing, "docker-compose")
 	}
+	if !e.HasNpm {
+		missing = append(missing, "npm (comes with Node.js)")
+	}
 	if !e.HasNode {
 		missing = append(missing, "node (v22+)")
 	}
 	if !e.HasPython {
 		missing = append(missing, "python3 (3.11+)")
+	}
+	if e.HasPython && !e.HasPythonVenv {
+		missing = append(missing, "python3-venv (apt install python3-venv)")
 	}
 	if !e.HasGit {
 		missing = append(missing, "git")
