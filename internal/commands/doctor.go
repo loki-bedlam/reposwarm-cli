@@ -376,10 +376,21 @@ func checkWorkerLogs() []checkResult {
 	}
 
 	installDir := cfg.EffectiveInstallDir()
-	logFile := filepath.Join(installDir, "logs", "worker.log")
 
-	if _, err := os.Stat(logFile); os.IsNotExist(err) {
-		return results // No log file, skip silently
+	// Try multiple log locations
+	candidates := []string{
+		filepath.Join(installDir, "logs", "worker.log"),
+		filepath.Join(installDir, "worker", "worker.log"),
+	}
+	logFile := ""
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			logFile = c
+			break
+		}
+	}
+	if logFile == "" {
+		return results // No log file found, skip silently
 	}
 
 	if !flagJSON {

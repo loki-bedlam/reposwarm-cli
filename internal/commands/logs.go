@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/loki-bedlam/reposwarm-cli/internal/bootstrap"
 	"github.com/loki-bedlam/reposwarm-cli/internal/config"
 	"github.com/loki-bedlam/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -44,25 +43,23 @@ If no service is specified, shows logs from all services.
 This command only works with local RepoSwarm installations.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Get install directory
-			env := bootstrap.Detect()
-			installDir := env.InstallDir()
-
-			// Check for ~/.reposwarm/local as fallback
+			// Resolve install directory from config, then auto-detect
 			cfg, _ := config.Load()
-			if cfg != nil && cfg.APIUrl != "" && strings.Contains(cfg.APIUrl, "localhost") {
-				// Likely a local install, check default location
-				homeDir, _ := os.UserHomeDir()
-				altDir := filepath.Join(homeDir, ".reposwarm", "local")
-				if _, err := os.Stat(filepath.Join(altDir, "logs")); err == nil {
-					installDir = altDir
-				}
+			installDir := ""
+			if cfg != nil {
+				installDir = cfg.EffectiveInstallDir()
 			}
 
-			logsDir := filepath.Join(installDir, "logs")
-			if _, err := os.Stat(logsDir); os.IsNotExist(err) {
-				return fmt.Errorf("no local installation found (checked %s)", logsDir)
+			// Auto-detect: check multiple possible log locations
+			logsDir, logLayout := findLogsDir(installDir)
+			if logsDir == "" {
+				checked := installDir
+				if checked == "" {
+					checked = "~/reposwarm"
+				}
+				return fmt.Errorf("no log files found\n\nChecked:\n  %s/logs/\n  %s/*/\n\nSet install path: reposwarm config set installDir /path/to/reposwarm", checked, checked)
 			}
+			_ = logLayout
 
 			// Determine which services to show
 			services := []string{"api", "worker", "temporal", "ui"}
@@ -82,10 +79,10 @@ This command only works with local RepoSwarm installations.`,
 				services = []string{service}
 			}
 
-			// Check which log files exist
+			// Check which log files exist (try both log layouts)
 			var existingServices []string
 			for _, service := range services {
-				logFile := filepath.Join(logsDir, service+".log")
+				logFile := resolveLogFile(logsDir, logLayout, service)
 				if _, err := os.Stat(logFile); err == nil {
 					existingServices = append(existingServices, service)
 				}
@@ -99,12 +96,12 @@ This command only works with local RepoSwarm installations.`,
 
 			// Handle tail mode
 			if tail {
-				return tailLogs(logsDir, existingServices)
+				return tailLogs(logsDir, existingServices, logLayout)
 			}
 
 			// Read last N lines from each service
 			for _, service := range existingServices {
-				logFile := filepath.Join(logsDir, service+".log")
+				logFile := resolveLogFile(logsDir, logLayout, service)
 				if err := showLogFile(service, logFile, lines); err != nil {
 					output.F.Warning(fmt.Sprintf("Error reading %s logs: %v", service, err))
 				}
@@ -118,6 +115,69 @@ This command only works with local RepoSwarm installations.`,
 	cmd.Flags().IntVarP(&lines, "lines", "n", 50, "Number of lines to show")
 
 	return cmd
+}
+
+// findLogsDir locates the logs directory and determines the layout.
+// Returns (dir, layout) where layout is "flat" ({dir}/worker.log) or "nested" ({dir}/worker/worker.log).
+func findLogsDir(installDir string) (string, string) {
+	if installDir == "" {
+		homeDir, _ := os.UserHomeDir()
+		installDir = filepath.Join(homeDir, "reposwarm")
+	}
+
+	// Try flat layout: {installDir}/logs/*.log
+	flatDir := filepath.Join(installDir, "logs")
+	if entries, err := os.ReadDir(flatDir); err == nil {
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".log") {
+				return flatDir, "flat"
+			}
+		}
+	}
+
+	// Try nested layout: {installDir}/{service}/{service}.log
+	for _, svc := range []string{"api", "worker", "temporal", "ui"} {
+		logFile := filepath.Join(installDir, svc, svc+".log")
+		if _, err := os.Stat(logFile); err == nil {
+			return installDir, "nested"
+		}
+	}
+
+	// Try nested layout: {installDir}/{service}/*.log
+	for _, svc := range []string{"api", "worker", "temporal", "ui"} {
+		svcDir := filepath.Join(installDir, svc)
+		if entries, err := os.ReadDir(svcDir); err == nil {
+			for _, e := range entries {
+				if strings.HasSuffix(e.Name(), ".log") {
+					return installDir, "nested"
+				}
+			}
+		}
+	}
+
+	return "", ""
+}
+
+// resolveLogFile returns the path to a service's log file based on layout.
+func resolveLogFile(baseDir, layout, service string) string {
+	if layout == "flat" {
+		return filepath.Join(baseDir, service+".log")
+	}
+	// Nested: try {baseDir}/{service}/{service}.log first, then any .log in the subdir
+	primary := filepath.Join(baseDir, service, service+".log")
+	if _, err := os.Stat(primary); err == nil {
+		return primary
+	}
+	// Scan for any .log file in the service subdir
+	svcDir := filepath.Join(baseDir, service)
+	if entries, err := os.ReadDir(svcDir); err == nil {
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".log") {
+				return filepath.Join(svcDir, e.Name())
+			}
+		}
+	}
+	return primary // fallback
 }
 
 func showLogFile(service, logFile string, maxLines int) error {
@@ -176,7 +236,7 @@ func showLogFile(service, logFile string, maxLines int) error {
 	return nil
 }
 
-func tailLogs(logsDir string, services []string) error {
+func tailLogs(logsDir string, services []string, layouts ...string) error {
 	F := output.F
 	F.Info(fmt.Sprintf("Tailing logs from: %s", strings.Join(services, ", ")))
 	F.Info("Press Ctrl+C to stop")
@@ -190,8 +250,12 @@ func tailLogs(logsDir string, services []string) error {
 	}
 
 	var readers []logReader
+	layout := "flat"
+	if len(layouts) > 0 {
+		layout = layouts[0]
+	}
 	for _, service := range services {
-		logFile := filepath.Join(logsDir, service+".log")
+		logFile := resolveLogFile(logsDir, layout, service)
 		file, err := os.Open(logFile)
 		if err != nil {
 			continue

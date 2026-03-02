@@ -90,6 +90,18 @@ func newConfigShowCmd() *cobra.Command {
 					"defaultModel": cfg.DefaultModel,
 					"chunkSize":    cfg.ChunkSize,
 					"outputFormat": cfg.OutputFormat,
+					"installDir":   cfg.EffectiveInstallDir(),
+				}
+				// Try to include server config
+				client, clientErr := getClient()
+				if clientErr == nil {
+					var serverCfg api.ConfigResponse
+					if err := client.Get(ctx(), "/config", &serverCfg); err == nil {
+						display["server"] = serverCfg
+						if cfg.EffectiveModel() != serverCfg.DefaultModel && serverCfg.DefaultModel != "" {
+							display["modelDrift"] = true
+						}
+					}
 				}
 				return output.JSON(display)
 			}
@@ -102,7 +114,28 @@ func newConfigShowCmd() *cobra.Command {
 			F.KeyValue("defaultModel", cfg.DefaultModel)
 			F.KeyValue("chunkSize", fmt.Sprint(cfg.ChunkSize))
 			F.KeyValue("outputFormat", cfg.OutputFormat)
+			F.KeyValue("installDir", cfg.EffectiveInstallDir())
 			F.Println()
+
+			// Show server-side config if API is reachable
+			client, err := getClient()
+			if err == nil {
+				var serverCfg api.ConfigResponse
+				if err := client.Get(ctx(), "/config", &serverCfg); err == nil {
+					F.Section("Server Configuration")
+					F.KeyValue("defaultModel", serverCfg.DefaultModel)
+					F.KeyValue("chunkSize", fmt.Sprint(serverCfg.ChunkSize))
+					F.KeyValue("parallelLimit", fmt.Sprint(serverCfg.ParallelLimit))
+
+					// Config drift warning
+					if cfg.EffectiveModel() != serverCfg.DefaultModel && serverCfg.DefaultModel != "" {
+						F.Println()
+						F.Warning(fmt.Sprintf("Model drift: CLI default '%s' ≠ server '%s'", cfg.EffectiveModel(), serverCfg.DefaultModel))
+					}
+					F.Println()
+				}
+			}
+
 			return nil
 		},
 	}
