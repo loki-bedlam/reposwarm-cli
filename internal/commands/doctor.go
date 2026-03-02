@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loki-bedlam/reposwarm-cli/internal/api"
 	"github.com/loki-bedlam/reposwarm-cli/internal/config"
 	"github.com/loki-bedlam/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -60,6 +61,12 @@ func newDoctorCmd() *cobra.Command {
 
 			// 6. Worker logs (local mode)
 			checks = append(checks, checkWorkerLogs()...)
+
+			// 7. Per-worker health (multi-worker)
+			checks = append(checks, checkPerWorkerHealth()...)
+
+			// 8. Stalled workflows
+			checks = append(checks, checkStalledWorkflows()...)
 
 			if flagJSON {
 				summary := map[string]any{
@@ -253,6 +260,105 @@ func checkNetwork() []checkResult {
 		c := checkResult{"GitHub API", "ok", fmt.Sprintf("HTTP %d", resp.StatusCode)}
 		printCheck(c)
 		results = append(results, c)
+	}
+
+	return results
+}
+
+func checkPerWorkerHealth() []checkResult {
+	var results []checkResult
+
+	client, err := getClient()
+	if err != nil {
+		return results
+	}
+
+	workers := gatherWorkerInfo(client)
+	if len(workers) <= 1 {
+		return results // Single worker already covered by existing checks
+	}
+
+	if !flagJSON {
+		output.F.Println()
+		output.F.Section(fmt.Sprintf("Workers (%d)", len(workers)))
+	}
+
+	healthy := 0
+	for _, w := range workers {
+		if w.Status == "healthy" {
+			healthy++
+		}
+		status := "ok"
+		msg := w.Status
+		if w.Status != "healthy" {
+			status = "fail"
+			if len(w.EnvErrors) > 0 {
+				msg += fmt.Sprintf(" (%s)", strings.Join(w.EnvErrors, ", "))
+			}
+		}
+
+		c := checkResult{
+			Name:    fmt.Sprintf("[%s] Status", w.Name),
+			Status:  status,
+			Message: msg,
+		}
+		printCheck(c)
+		results = append(results, c)
+	}
+
+	return results
+}
+
+func checkStalledWorkflows() []checkResult {
+	var results []checkResult
+
+	client, err := getClient()
+	if err != nil {
+		return results
+	}
+
+	var wfResult api.WorkflowsResponse
+	if err := client.Get(ctx(), "/workflows?pageSize=20", &wfResult); err != nil {
+		return results
+	}
+
+	for _, w := range wfResult.Executions {
+		if w.Status != "RUNNING" && w.Status != "Running" {
+			continue
+		}
+
+		startTime, err := time.Parse(time.RFC3339, w.StartTime)
+		if err != nil {
+			continue
+		}
+		runDuration := time.Since(startTime)
+
+		if runDuration < 30*time.Minute {
+			continue
+		}
+
+		// Check progress via wiki
+		repo := repoName(w.WorkflowID)
+		var wikiIndex api.WikiIndex
+		sections := 0
+		if err := client.Get(ctx(), "/wiki/"+repo, &wikiIndex); err == nil {
+			sections = len(wikiIndex.Sections)
+		}
+
+		if sections == 0 {
+			if !flagJSON && len(results) == 0 {
+				output.F.Println()
+				output.F.Section("Stalled Workflows")
+			}
+
+			c := checkResult{
+				Name:    repo,
+				Status:  "warn",
+				Message: fmt.Sprintf("0/17 steps, running %s, no progress", formatRelativeTime(runDuration)),
+			}
+			printCheck(c)
+			results = append(results, c)
+		}
 	}
 
 	return results
