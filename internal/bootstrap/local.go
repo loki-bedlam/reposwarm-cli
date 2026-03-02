@@ -228,13 +228,12 @@ func setupAPI(installDir string, cfg *Config, token string, printer Printer) err
 
 	// Write .env
 	envContent := fmt.Sprintf(`PORT=%s
-TEMPORAL_ADDRESS=localhost:%s
+TEMPORAL_SERVER_URL=localhost:%s
 TEMPORAL_NAMESPACE=default
 TEMPORAL_TASK_QUEUE=investigate-task-queue
 AWS_REGION=%s
 DYNAMODB_TABLE=%s
-BEARER_TOKEN=%s
-AUTH_MODE=local
+API_BEARER_TOKEN=%s
 `, cfg.APIPort, cfg.TemporalPort, cfg.Region, cfg.DynamoDBTable, token)
 
 	if err := os.WriteFile(filepath.Join(apiDir, ".env"), []byte(envContent), 0600); err != nil {
@@ -304,7 +303,7 @@ func setupWorker(installDir string, cfg *Config, printer Printer) error {
 	}
 
 	// Write .env
-	envContent := fmt.Sprintf(`TEMPORAL_ADDRESS=localhost:%s
+	envContent := fmt.Sprintf(`TEMPORAL_SERVER_URL=localhost:%s
 TEMPORAL_NAMESPACE=default
 TEMPORAL_TASK_QUEUE=investigate-task-queue
 AWS_REGION=%s
@@ -330,7 +329,7 @@ DEFAULT_MODEL=%s
 	startCmd.Stderr = logFile
 	// Pass env vars explicitly since .env isn't auto-loaded
 	startCmd.Env = append(os.Environ(),
-		fmt.Sprintf("TEMPORAL_ADDRESS=localhost:%s", cfg.TemporalPort),
+		fmt.Sprintf("TEMPORAL_SERVER_URL=localhost:%s", cfg.TemporalPort),
 		"TEMPORAL_NAMESPACE=default",
 		"TEMPORAL_TASK_QUEUE=investigate-task-queue",
 		fmt.Sprintf("AWS_REGION=%s", cfg.Region),
