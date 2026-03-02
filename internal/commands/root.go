@@ -80,6 +80,7 @@ Get started:
 
 	// Workflows (includes watch as subcommand)
 	root.AddCommand(newWorkflowsCmd())
+	root.AddCommand(newDashboardCmd())
 	root.AddCommand(newInvestigateCmd())
 
 	// Results (includes diff, report as subcommands; show→sections)
