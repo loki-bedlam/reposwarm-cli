@@ -72,6 +72,8 @@ Get started:
 	root.AddCommand(newStatusCmd())
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newUpgradeCmd(version))
+	root.AddCommand(newShowCmd())
+	root.AddCommand(newURLCmd())
 
 	// Repos (includes discover as subcommand)
 	root.AddCommand(newReposCmd())

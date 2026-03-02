@@ -22,6 +22,7 @@ type Config struct {
 	WorkerRepoURL  string `json:"workerRepoUrl,omitempty"`
 	APIRepoURL     string `json:"apiRepoUrl,omitempty"`
 	UIRepoURL      string `json:"uiRepoUrl,omitempty"`
+	HubURL         string `json:"hubUrl,omitempty"`
 	DynamoDBTable  string `json:"dynamodbTable,omitempty"`
 	TemporalPort   string `json:"temporalPort,omitempty"`
 	TemporalUIPort string `json:"temporalUiPort,omitempty"`
@@ -44,6 +45,11 @@ func (c *Config) EffectiveAPIRepoURL() string {
 func (c *Config) EffectiveUIRepoURL() string {
 	if c.UIRepoURL != "" { return c.UIRepoURL }
 	return "https://github.com/loki-bedlam/reposwarm-ui.git"
+}
+
+func (c *Config) EffectiveHubURL() string {
+	if c.HubURL != "" { return c.HubURL }
+	return "https://github.com/loki-bedlam/reposwarm-ui"
 }
 
 func (c *Config) EffectiveDynamoDBTable() string {
@@ -91,7 +97,7 @@ func DefaultConfig() *Config {
 func ValidKeys() []string {
 	return []string{
 		"apiUrl", "apiToken", "region", "defaultModel", "chunkSize", "outputFormat",
-		"workerRepoUrl", "apiRepoUrl", "uiRepoUrl", "dynamodbTable",
+		"workerRepoUrl", "apiRepoUrl", "uiRepoUrl", "hubUrl", "dynamodbTable",
 		"temporalPort", "temporalUiPort", "apiPort", "uiPort",
 	}
 }
@@ -197,6 +203,8 @@ func Set(cfg *Config, key, value string) error {
 		cfg.APIRepoURL = value
 	case "uiRepoUrl":
 		cfg.UIRepoURL = value
+	case "hubUrl":
+		cfg.HubURL = value
 	case "dynamodbTable":
 		cfg.DynamoDBTable = value
 	case "temporalPort":

@@ -19,12 +19,28 @@ go build -o reposwarm ./cmd/reposwarm
 
 ## Quick Start
 
+### Connect to Existing Server
 ```bash
 reposwarm config init             # Connect to a RepoSwarm server
 reposwarm status                  # Check connection
 reposwarm repos list              # List tracked repos
 reposwarm investigate <repo>      # Run an investigation
 reposwarm results sections <repo> # Browse results
+```
+
+### Bootstrap Local Installation
+```bash
+reposwarm new --local             # Set up complete local environment
+# This will:
+#   1. Clone worker, API, and UI repositories
+#   2. Start Temporal server + DynamoDB local
+#   3. Start worker processes
+#   4. Launch API server and UI
+#   5. Configure CLI to connect to local API
+
+reposwarm show temporal           # Open Temporal UI
+reposwarm show ui                 # Open RepoSwarm UI
+reposwarm url all                 # View all service URLs
 ```
 
 ## Commands
@@ -39,7 +55,9 @@ reposwarm results sections <repo> # Browse results
 | `reposwarm config server-set <key> <value>` | Update server config |
 | `reposwarm status` | Quick API health check with latency |
 | `reposwarm doctor` | Deep diagnosis (config, API, Temporal, DynamoDB, worker, network) |
-| `reposwarm new` | Bootstrap a new local installation |
+| `reposwarm new` | Bootstrap a new local installation (`--local` for complete setup) |
+| `reposwarm show <target>` | Open URL in browser (temporal, ui, api, hub) |
+| `reposwarm url <service>` | Print service URL (temporal, temporal-grpc, ui, api, hub, all) |
 | `reposwarm version` | Print version (`-v` / `--version` also work) |
 | `reposwarm upgrade` | Self-update to latest version (`--force` to reinstall) |
 
@@ -101,6 +119,58 @@ reposwarm results sections <repo> # Browse results
 | `-v` / `--version` | Print version |
 
 Default output is human-friendly (colors, tables). Use `--for-agent` for plain text or `--json` for structured output.
+
+## Local Development Setup
+
+The `reposwarm new --local` command provides a complete local development environment:
+
+### What it does:
+1. **Clones repositories** — worker, API, and UI from GitHub
+2. **Starts Temporal** — Local Temporal server on port 7233 (UI on 8233)
+3. **Starts DynamoDB Local** — Local AWS DynamoDB on port 8000
+4. **Configures Worker** — Sets up environment, installs dependencies
+5. **Starts API** — Launches API server on port 3000
+6. **Starts UI** — Launches web UI on port 3001
+7. **Configures CLI** — Connects CLI to local API
+
+### Requirements:
+- Docker (for Temporal and DynamoDB)
+- Node.js 18+ (for UI)
+- Python 3.11+ (for worker and API)
+- ~2GB disk space
+- ~1GB RAM
+
+### Usage:
+```bash
+# Bootstrap everything
+reposwarm new --local
+
+# Check status
+reposwarm status
+reposwarm doctor
+
+# Open services in browser
+reposwarm show temporal   # Temporal UI
+reposwarm show ui         # RepoSwarm UI
+reposwarm show api        # API health endpoint
+
+# View all service URLs
+reposwarm url all
+
+# Start investigating
+reposwarm repos add my-repo --url https://github.com/user/repo
+reposwarm investigate my-repo
+```
+
+### Configuration:
+Customize ports and URLs via `reposwarm config set`:
+```bash
+reposwarm config set temporalPort 7233
+reposwarm config set temporalUiPort 8233
+reposwarm config set apiPort 3000
+reposwarm config set uiPort 3001
+reposwarm config set hubUrl https://github.com/your-org/reposwarm-ui
+```
 
 ## Environment Variables
 
