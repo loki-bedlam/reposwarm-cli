@@ -339,6 +339,13 @@ func buildRecommendedActions(checks []checkResult) []recommendedAction {
 		case strings.Contains(c.Name, "API") && strings.Contains(c.Message, "not reachable"):
 			cmd = "reposwarm restart api"
 			desc = "Restart the API server"
+		case strings.Contains(c.Message, "NOT SET") && !strings.Contains(c.Name, "Required"):
+			// Missing env var — offer direct set command
+			cmd = fmt.Sprintf("reposwarm config worker-env set %s <value>", c.Name)
+			desc = fmt.Sprintf("Set missing env var: %s", c.Name)
+		case strings.Contains(c.Name, "Required:") && strings.Contains(c.Message, "NOT SET"):
+			cmd = "reposwarm config provider setup"
+			desc = "Configure provider (sets required env vars)"
 		default:
 			continue
 		}
@@ -670,9 +677,12 @@ func checkWorkerEnv() []checkResult {
 			printCheck(c)
 			results = append(results, c)
 		} else {
-			c := checkResult{entry.Key, "fail", fmt.Sprintf("NOT SET \u2014 %s", desc)}
+			c := checkResult{entry.Key, "fail", fmt.Sprintf("NOT SET — %s", desc)}
 			printCheck(c)
 			results = append(results, c)
+			if !flagJSON {
+				fmt.Printf("     Set it: %s\n", output.Cyan(fmt.Sprintf("reposwarm config worker-env set %s <value>", entry.Key)))
+			}
 		}
 	}
 
@@ -927,6 +937,14 @@ func checkProviderCredentials() []checkResult {
 			if !containsCheckForKey(results, missing.Key) {
 				printCheck(c)
 				results = append(results, c)
+				if !flagJSON {
+					if missing.Key == "ANTHROPIC_API_KEY" || missing.Key == "AWS_BEARER_TOKEN_BEDROCK" {
+						// Sensitive — point to provider setup instead of direct set
+						fmt.Printf("     Configure: %s\n", output.Cyan("reposwarm config provider setup"))
+					} else {
+						fmt.Printf("     Set it: %s\n", output.Cyan(fmt.Sprintf("reposwarm config worker-env set %s <value>", missing.Key)))
+					}
+				}
 			}
 		}
 	}
