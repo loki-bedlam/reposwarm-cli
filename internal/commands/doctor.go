@@ -81,7 +81,7 @@ Use --fix to attempt automatic fixes for failed checks.`,
 			checks = append(checks, checkStalledWorkflows()...)
 
 			// 9. Provider credentials and inference check
-			checks = append(checks, checkProviderCredentials()...)
+			checks = append(checks, checkProviderCredentials(checks)...)
 
 			if flagJSON {
 				summary := map[string]any{
@@ -812,7 +812,7 @@ func pluralizeCount(n int, word string) string {
 	return fmt.Sprintf("%d %ss", n, word)
 }
 
-func checkProviderCredentials() []checkResult {
+func checkProviderCredentials(priorChecks []checkResult) []checkResult {
 	var results []checkResult
 
 	cfg, err := config.Load()
@@ -966,7 +966,7 @@ func checkProviderCredentials() []checkResult {
 			}
 			c := checkResult{"Inference check", "fail", errorMsg}
 			if !flagJSON {
-				output.F.Error(fmt.Sprintf("✗ %s", errorMsg))
+				output.F.Error(errorMsg)
 			}
 			results = append(results, c)
 		}
@@ -981,7 +981,7 @@ func checkProviderCredentials() []checkResult {
 				Message: fmt.Sprintf("NOT SET — %s", missing.Desc),
 			}
 			// Don't double-print if we already checked it above
-			if !containsCheckForKey(results, missing.Key) {
+			if !containsCheckForKey(results, missing.Key) && !containsCheckForKey(priorChecks, missing.Key) {
 				printCheck(c)
 				results = append(results, c)
 				if !flagJSON {
