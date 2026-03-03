@@ -4,8 +4,11 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 //go:embed providers.json
@@ -53,14 +56,20 @@ type ProvidersFile struct {
 
 var cachedProviders *ProvidersFile
 
-// LoadProviders loads the provider configuration from external file or embedded default.
-// Lookup order: ~/.reposwarm/providers.json → embedded providers.json
+// LoadProviders loads the provider configuration.
+// Lookup order: API server → ~/.reposwarm/providers.json → embedded providers.json
 func LoadProviders() (*ProvidersFile, error) {
 	if cachedProviders != nil {
 		return cachedProviders, nil
 	}
 
-	// Try external file first (~/.reposwarm/providers.json)
+	// Try API server first (single source of truth)
+	if pf := fetchProvidersFromAPI(); pf != nil {
+		cachedProviders = pf
+		return cachedProviders, nil
+	}
+
+	// Try external file (~/.reposwarm/providers.json)
 	home, err := os.UserHomeDir()
 	if err == nil {
 		extPath := filepath.Join(home, ".reposwarm", "providers.json")
@@ -70,7 +79,6 @@ func LoadProviders() (*ProvidersFile, error) {
 				cachedProviders = &pf
 				return cachedProviders, nil
 			}
-			// Invalid JSON in external file — fall through to embedded
 		}
 	}
 
@@ -87,6 +95,65 @@ func LoadProviders() (*ProvidersFile, error) {
 
 	cachedProviders = &pf
 	return cachedProviders, nil
+}
+
+// fetchProvidersFromAPI tries to fetch the providers bundle from the API server.
+// Returns nil if the API is unavailable or doesn't support the endpoint.
+func fetchProvidersFromAPI() *ProvidersFile {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	// Read config to get API URL and token
+	cfgPath := filepath.Join(home, ".reposwarm", "config.json")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return nil
+	}
+
+	var cfg struct {
+		APIUrl   string `json:"apiUrl"`
+		APIToken string `json:"apiToken"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil || cfg.APIUrl == "" {
+		return nil
+	}
+
+	url := cfg.APIUrl + "/providers"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil
+	}
+	if cfg.APIToken != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.APIToken)
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil
+	}
+
+	var wrapper struct {
+		Data ProvidersFile `json:"data"`
+	}
+	if err := json.Unmarshal(body, &wrapper); err != nil {
+		return nil
+	}
+
+	// Validate we got something useful
+	if len(wrapper.Data.Providers) == 0 {
+		return nil
+	}
+
+	return &wrapper.Data
 }
 
 // ResetProvidersCache clears the cached providers (for testing).

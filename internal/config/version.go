@@ -9,7 +9,7 @@ import (
 // Minimum compatible versions for CLI ↔ API ↔ UI.
 // Bump these when the CLI starts using new API/UI features.
 const (
-	MinAPIVersion = "1.1.0" // inference-check endpoint, provider-aware env validation
+	MinAPIVersion = "1.2.0" // providers bundle endpoint, inference-check, provider-aware env
 	MinUIVersion  = "1.0.0" // no specific requirements yet
 )
 

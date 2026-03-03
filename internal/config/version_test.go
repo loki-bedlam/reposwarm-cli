@@ -59,13 +59,13 @@ func TestIsCompatible(t *testing.T) {
 }
 
 func TestCheckVersions(t *testing.T) {
-	results := CheckVersions("1.1.0", "1.0.0")
+	results := CheckVersions("1.2.0", "1.0.0")
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results, got %d", len(results))
 	}
 
 	if !results[0].Compatible {
-		t.Error("API 1.1.0 should be compatible with min 1.1.0")
+		t.Error("API 1.2.0 should be compatible with min 1.2.0")
 	}
 	if !results[1].Compatible {
 		t.Error("UI 1.0.0 should be compatible with min 1.0.0")
@@ -76,6 +76,6 @@ func TestCheckVersions(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 	if results[0].Compatible {
-		t.Error("API 1.0.0 should NOT be compatible with min 1.1.0")
+		t.Error("API 1.0.0 should NOT be compatible with min 1.2.0")
 	}
 }
