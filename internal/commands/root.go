@@ -74,6 +74,7 @@ Get started:
 	root.AddCommand(newUpgradeCmd(version))
 	root.AddCommand(newChangelogCmd(version))
 	root.AddCommand(newUninstallCmd())
+	root.AddCommand(newTunnelCmd())
 	root.AddCommand(newShowCmd())
 	root.AddCommand(newURLCmd())
 

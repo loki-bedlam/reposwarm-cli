@@ -161,6 +161,13 @@ Examples:
 				doctorCmd.SetArgs([]string{})
 				_ = doctorCmd.Execute()
 
+				// ── Post-setup: Remote access hint ──
+				fmt.Println()
+				output.F.Section("Remote Access")
+				fmt.Println()
+				output.F.Info("To access the UI from your local browser, set up an SSH tunnel:")
+				fmt.Printf("  Run: %s\n\n", output.Cyan("reposwarm tunnel"))
+
 				_ = result // used by JSON/agent modes above
 				return nil
 			}
