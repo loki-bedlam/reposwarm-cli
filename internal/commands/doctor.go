@@ -48,6 +48,9 @@ func newDoctorCmd() *cobra.Command {
 			// 2. API connectivity
 			checks = append(checks, checkAPI()...)
 
+			// 2b. Version compatibility
+			checks = append(checks, checkVersionCompat()...)
+
 			// 3. Local tools
 			checks = append(checks, checkLocalTools()...)
 
@@ -94,6 +97,64 @@ func printCheck(c checkResult) {
 		return
 	}
 	output.F.CheckResult(c.Name, c.Status, c.Message)
+}
+
+func checkVersionCompat() []checkResult {
+	var results []checkResult
+
+	client, err := getClient()
+	if err != nil {
+		return results
+	}
+
+	if !flagJSON {
+		output.F.Println()
+		output.F.Section("Version Compatibility")
+	}
+
+	// Get API version from health endpoint
+	health, err := client.Health(context.Background())
+	apiVersion := ""
+	if err == nil && health.Version != "" {
+		apiVersion = health.Version
+	}
+
+	// Get UI version (try /version or /)
+	uiVersion := ""
+	// UI version check is best-effort — skip for now
+
+	versionChecks := config.CheckVersions(apiVersion, uiVersion)
+	for _, vc := range versionChecks {
+		if vc.Compatible {
+			c := checkResult{
+				Name:    fmt.Sprintf("%s version", vc.Component),
+				Status:  "ok",
+				Message: fmt.Sprintf("v%s (min: v%s)", vc.Actual, vc.Minimum),
+			}
+			printCheck(c)
+			results = append(results, c)
+		} else {
+			c := checkResult{
+				Name:    fmt.Sprintf("%s version", vc.Component),
+				Status:  "fail",
+				Message: fmt.Sprintf("v%s — needs v%s+ (upgrade %s)", vc.Actual, vc.Minimum, strings.ToLower(vc.Component)),
+			}
+			printCheck(c)
+			results = append(results, c)
+		}
+	}
+
+	if apiVersion == "" {
+		c := checkResult{
+			Name:    "API version",
+			Status:  "warn",
+			Message: "could not determine API version",
+		}
+		printCheck(c)
+		results = append(results, c)
+	}
+
+	return results
 }
 
 func checkConfig() []checkResult {
