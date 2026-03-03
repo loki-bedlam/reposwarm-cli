@@ -153,9 +153,9 @@ func (f *AgentFormatter) CheckSummary(ok, warn, fail int) {
 	if fail == 0 && warn == 0 {
 		fmt.Fprintf(f.w, "\nAll %d checks passed\n", ok)
 	} else if fail == 0 {
-		fmt.Fprintf(f.w, "\n%d passed, %d warnings\n", ok, warn)
+		fmt.Fprintf(f.w, "\n%d passed, %s\n", ok, pluralize(warn, "warning"))
 	} else {
-		fmt.Fprintf(f.w, "\n%d passed, %d warnings, %d failed\n", ok, warn, fail)
+		fmt.Fprintf(f.w, "\n%d passed, %s, %s\n", ok, pluralize(warn, "warning"), pluralize(fail, "failure"))
 	}
 }
 
@@ -246,9 +246,9 @@ func (f *HumanFormatter) CheckSummary(ok, warn, fail int) {
 	if fail == 0 && warn == 0 {
 		fmt.Printf("  %s All %d checks passed\n\n", Green("✅"), ok)
 	} else if fail == 0 {
-		fmt.Printf("  %s %d passed, %d warnings\n\n", Yellow("⚠️"), ok, warn)
+		fmt.Printf("  %s %d passed, %s\n\n", Yellow("⚠️"), ok, pluralize(warn, "warning"))
 	} else {
-		fmt.Printf("  %s %d passed, %d warnings, %d failed\n\n", Red("❌"), ok, warn, fail)
+		fmt.Printf("  %s %d passed, %s, %s\n\n", Red("❌"), ok, pluralize(warn, "warning"), pluralize(fail, "failure"))
 	}
 }
 
@@ -286,3 +286,10 @@ func (f *HumanFormatter) Finish() {
 }
 
 func (f *AgentFormatter) Finish() {}
+
+func pluralize(n int, word string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, word)
+	}
+	return fmt.Sprintf("%d %ss", n, word)
+}
