@@ -739,8 +739,12 @@ func checkWorkerLogs() []checkResult {
 	errorPatterns := []string{"error", "Error", "ERROR", "failed", "Failed", "FAILED", "Traceback", "Exception", "ValidationError"}
 	summaryPattern := regexp.MustCompile(`(?i)found \d+ errors? and \d+ warnings?`)
 	envValidationFailed := regexp.MustCompile(`(?i)environment validation failed`)
-	// Match individual validation issue lines like "❌ ERROR: GITHUB_TOKEN not set" or "⚠️ WARNING: ..."
-	validationIssue := regexp.MustCompile(`(?:ERROR|WARNING):\s+(.+)`)
+	// Match individual validation issue lines — various formats:
+	// "❌ ERROR: GITHUB_TOKEN not set"  or  "❌ GITHUB_TOKEN is not set"
+	// "⚠️ WARNING: SMALL_MODEL not set" or  "⚠️ ANTHROPIC_SMALL_FAST_MODEL is not set"
+	// May have log prefix like "INFO:__main__: "
+	validationError := regexp.MustCompile(`❌\s*(?:ERROR:?\s*)?(.+)`)
+	validationWarn := regexp.MustCompile(`⚠️?\s*(?:WARNING:?\s*)?(.+)`)
 
 	var errorLines []string
 	var validationIssues []string
@@ -765,15 +769,19 @@ func checkWorkerLogs() []checkResult {
 		}
 
 		// Capture individual validation errors/warnings
-		if m := validationIssue.FindStringSubmatch(line); len(m) == 2 {
-			// Extract just the issue text, strip log prefix
+		if m := validationError.FindStringSubmatch(line); len(m) == 2 {
 			issue := strings.TrimSpace(m[1])
-			if strings.Contains(line, "ERROR") {
+			if issue != "" && !envValidationFailed.MatchString(issue) {
 				validationIssues = append(validationIssues, fmt.Sprintf("✗ %s", issue))
-			} else {
+			}
+			continue
+		}
+		if m := validationWarn.FindStringSubmatch(line); len(m) == 2 {
+			issue := strings.TrimSpace(m[1])
+			if issue != "" {
 				validationIssues = append(validationIssues, fmt.Sprintf("⚠ %s", issue))
 			}
-			continue // Don't also count as a generic error line
+			continue
 		}
 
 		for _, pattern := range errorPatterns {
