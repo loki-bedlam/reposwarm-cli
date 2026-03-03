@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/loki-bedlam/reposwarm-cli/internal/config"
 	"github.com/loki-bedlam/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -149,7 +150,7 @@ func runPreflightChecks(repo string) []preflightCheck {
 		checks = append(checks, preflightCheck{"Workers", "fail", "no workers detected"})
 	}
 
-	// 4. Worker env (via API)
+	// 4. Worker env — driven by providers.json (single source of truth)
 	var envResp struct {
 		Entries []struct {
 			Key string `json:"key"`
@@ -157,15 +158,31 @@ func runPreflightChecks(repo string) []preflightCheck {
 		} `json:"entries"`
 	}
 	if err := client.Get(ctx(), "/workers/worker-1/env", &envResp); err == nil {
-		required := []string{"ANTHROPIC_API_KEY", "GITHUB_TOKEN"}
-		var missingEnv []string
+		// Build required env vars from config
+		required := map[string]bool{}
+		cfg, cfgErr := config.Load()
+		if cfgErr == nil {
+			for _, req := range config.RequiredEnvVarsWithGit(&cfg.ProviderConfig, cfg.GitProvider) {
+				if req.Required {
+					required[req.Key] = true
+				}
+			}
+		}
+		if len(required) == 0 {
+			// Fallback: at minimum check for a model var
+			required["ANTHROPIC_MODEL"] = true
+		}
+
 		entryMap := map[string]bool{}
 		for _, e := range envResp.Entries {
 			if e.Set {
 				entryMap[e.Key] = true
 			}
 		}
-		for _, req := range required {
+
+		// Also check vars that might not be in API response
+		var missingEnv []string
+		for req := range required {
 			if !entryMap[req] {
 				missingEnv = append(missingEnv, req)
 			}
