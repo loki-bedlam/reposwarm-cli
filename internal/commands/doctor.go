@@ -653,8 +653,11 @@ func checkWorkerEnv() []checkResult {
 		return results
 	}
 
-	required := map[string]string{
-		"GITHUB_TOKEN": "GitHub token (for repo access)",
+	required := map[string]string{}
+
+	// GITHUB_TOKEN is optional — only needed for private repos
+	optional := map[string]string{
+		"GITHUB_TOKEN": "GitHub token (only needed for private repos)",
 	}
 
 	// Add provider-specific requirements (don't hardcode ANTHROPIC_API_KEY for all providers)
@@ -683,6 +686,23 @@ func checkWorkerEnv() []checkResult {
 			if !flagJSON {
 				fmt.Printf("     Set it: %s\n", output.Cyan(fmt.Sprintf("reposwarm config worker-env set %s <value>", entry.Key)))
 			}
+		}
+	}
+
+	// Check optional env vars (warn, not fail)
+	for _, entry := range envResp.Entries {
+		desc, isOptional := optional[entry.Key]
+		if !isOptional {
+			continue
+		}
+		if entry.Set {
+			c := checkResult{entry.Key, "ok", "set"}
+			printCheck(c)
+			results = append(results, c)
+		} else {
+			c := checkResult{entry.Key, "warn", fmt.Sprintf("not set — %s", desc)}
+			printCheck(c)
+			results = append(results, c)
 		}
 	}
 
