@@ -655,18 +655,16 @@ func checkWorkerEnv() []checkResult {
 	}
 
 	required := map[string]string{}
+	optional := map[string]string{}
 
-	// GITHUB_TOKEN is optional — only needed for private repos
-	optional := map[string]string{
-		"GITHUB_TOKEN": "GitHub token (only needed for private repos)",
-	}
-
-	// Add provider-specific requirements (don't hardcode ANTHROPIC_API_KEY for all providers)
+	// All env var requirements come from providers.json — single source of truth
 	cfg, cfgErr := config.Load()
 	if cfgErr == nil {
 		for _, req := range config.RequiredEnvVars(&cfg.ProviderConfig) {
 			if req.Required {
 				required[req.Key] = req.Desc
+			} else {
+				optional[req.Key] = req.Desc
 			}
 		}
 	}
@@ -735,78 +733,35 @@ func checkWorkerLogs() []checkResult {
 		return results
 	}
 
-	// Scan for errors — skip summary lines like "Found X errors and Y warnings"
-	errorPatterns := []string{"error", "Error", "ERROR", "failed", "Failed", "FAILED", "Traceback", "Exception", "ValidationError"}
-	summaryPattern := regexp.MustCompile(`(?i)found \d+ errors? and \d+ warnings?`)
-	envValidationFailed := regexp.MustCompile(`(?i)environment validation failed`)
-	// Match individual validation issue lines — various formats:
-	// "❌ ERROR: GITHUB_TOKEN not set"  or  "❌ GITHUB_TOKEN is not set"
-	// "⚠️ WARNING: SMALL_MODEL not set" or  "⚠️ ANTHROPIC_SMALL_FAST_MODEL is not set"
-	// May have log prefix like "INFO:__main__: "
-	validationError := regexp.MustCompile(`❌\s*(?:ERROR:?\s*)?(.+)`)
-	validationWarn := regexp.MustCompile(`⚠️?\s*(?:WARNING:?\s*)?(.+)`)
+	// Scan for real runtime errors only — skip worker's own env validation noise
+	// (env validation is already handled by doctor's Worker Environment section using providers.json)
+	runtimeErrorPatterns := []string{"Traceback", "Exception", "CRITICAL", "panic"}
+	envValidationNoise := regexp.MustCompile(`(?i)` + strings.Join([]string{
+		`found \d+ errors? and \d+ warnings?`,
+		`environment validation`,
+		`❌`,
+		`⚠️`,
+		`ERROR:.*not set`,
+		`ERROR:.*missing`,
+		`ERROR:.*not configured`,
+		`WARNING:.*not set`,
+		`WARNING:.*not configured`,
+		`WARNING:.*recommended`,
+	}, "|"))
 
 	var errorLines []string
-	var validationIssues []string
-	var workerErrors, workerWarnings int
 
 	for _, line := range logResp.Lines {
-		// Extract the worker's own validation summary if present
-		if m := regexp.MustCompile(`Found (\d+) errors? and (\d+) warnings?`).FindStringSubmatch(line); len(m) == 3 {
-			fmt.Sscanf(m[1], "%d", &workerErrors)
-			fmt.Sscanf(m[2], "%d", &workerWarnings)
+		// Skip all env validation output — doctor checks this authoritatively via providers.json
+		if envValidationNoise.MatchString(line) {
 			continue
 		}
 
-		// Skip "ENVIRONMENT VALIDATION FAILED" header
-		if envValidationFailed.MatchString(line) {
-			continue
-		}
-
-		// Skip summary lines
-		if summaryPattern.MatchString(line) {
-			continue
-		}
-
-		// Capture individual validation errors/warnings
-		if m := validationError.FindStringSubmatch(line); len(m) == 2 {
-			issue := strings.TrimSpace(m[1])
-			if issue != "" && !envValidationFailed.MatchString(issue) {
-				validationIssues = append(validationIssues, fmt.Sprintf("✗ %s", issue))
-			}
-			continue
-		}
-		if m := validationWarn.FindStringSubmatch(line); len(m) == 2 {
-			issue := strings.TrimSpace(m[1])
-			if issue != "" {
-				validationIssues = append(validationIssues, fmt.Sprintf("⚠ %s", issue))
-			}
-			continue
-		}
-
-		for _, pattern := range errorPatterns {
+		// Check for real runtime errors
+		for _, pattern := range runtimeErrorPatterns {
 			if strings.Contains(line, pattern) {
 				errorLines = append(errorLines, line)
 				break
-			}
-		}
-	}
-
-	if workerErrors > 0 || workerWarnings > 0 || len(validationIssues) > 0 {
-		msg := fmt.Sprintf("env validation: %s, %s",
-			pluralizeCount(workerErrors, "error"), pluralizeCount(workerWarnings, "warning"))
-		c := checkResult{"Worker validation", "warn", msg}
-		printCheck(c)
-		results = append(results, c)
-
-		// Show the actual issues
-		if !flagJSON && len(validationIssues) > 0 {
-			for _, issue := range validationIssues {
-				if strings.HasPrefix(issue, "✗") {
-					fmt.Printf("    %s\n", output.Red(issue))
-				} else {
-					fmt.Printf("    %s\n", output.Yellow(issue))
-				}
 			}
 		}
 	}
@@ -816,7 +771,7 @@ func checkWorkerLogs() []checkResult {
 		if len(shown) > 5 {
 			shown = shown[len(shown)-5:]
 		}
-		msg := fmt.Sprintf("%s in last 20 log lines", pluralizeCount(len(errorLines), "error"))
+		msg := fmt.Sprintf("%s in recent logs", pluralizeCount(len(errorLines), "runtime error"))
 		c := checkResult{"Worker log", "warn", msg}
 		printCheck(c)
 		results = append(results, c)
@@ -830,8 +785,8 @@ func checkWorkerLogs() []checkResult {
 				output.F.Printf("    %s\n", output.Yellow(trimmed))
 			}
 		}
-	} else if workerErrors == 0 && workerWarnings == 0 {
-		c := checkResult{"Worker log", "ok", "no recent errors"}
+	} else {
+		c := checkResult{"Worker log", "ok", "no runtime errors"}
 		printCheck(c)
 		results = append(results, c)
 	}
