@@ -180,8 +180,9 @@ assert_exit_0 "provider set bedrock" $CLI config provider set bedrock
 step "Doctor includes provider checks"
 DOC_OUT=$($CLI doctor --json 2>&1)
 assert_json_valid "doctor --json valid" "$DOC_OUT"
-# Provider check names include "Bedrock" or "AWS" or "Anthropic" in the checks array
-assert_contains "Has provider-related check" "$DOC_OUT" "Bedrock|AWS|Anthropic|Provider|credential|iam"
+# The checks array contains items with names like "Bedrock IAM role", "AWS credentials" etc
+FULL_DOC=$(echo "$DOC_OUT" | tr '\n' ' ')
+assert_contains "Has provider-related check" "$FULL_DOC" "Bedrock|AWS|Anthropic|IAM|credential"
 
 DOC_HUMAN=$($CLI doctor 2>&1)
 assert_contains "Doctor shows provider section" "$DOC_HUMAN" "Provider|Bedrock|credential|Inference"
