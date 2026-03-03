@@ -122,6 +122,44 @@ reposwarm restart worker --wait
 reposwarm doctor
 ```
 
+### 🔧 Configure LLM Provider
+
+```bash
+# Interactive setup (walks through provider, model, region)
+reposwarm config provider setup
+
+# Non-interactive: switch to Amazon Bedrock with Opus
+reposwarm config provider setup \
+  --provider bedrock \
+  --region us-east-1 \
+  --model opus \
+  --pin \
+  --non-interactive
+
+# Non-interactive: use LiteLLM proxy
+reposwarm config provider setup \
+  --provider litellm \
+  --proxy-url https://my-proxy.example.com \
+  --proxy-key sk-proxy-key \
+  --model sonnet \
+  --non-interactive
+
+# Quick-switch provider (keeps other settings)
+reposwarm config provider set bedrock
+
+# Check what's configured (detects CLI vs worker drift)
+reposwarm config provider show
+
+# List available model aliases
+reposwarm config model list
+
+# Pin model versions (prevents silent version drift)
+reposwarm config model pin
+
+# Restart worker to apply changes
+reposwarm restart worker
+```
+
 ### 🔧 Fix a Stuck Investigation (End-to-End)
 
 The full fix loop — from broken to running in 6 commands:
@@ -287,6 +325,13 @@ reposwarm services --json | jq '.[] | {name, status, pid}'
 | `reposwarm config worker-env list` | Show worker env vars (`--reveal` for unmasked values) |
 | `reposwarm config worker-env set <K> <V>` | Set worker env var (`--restart` to auto-restart) |
 | `reposwarm config worker-env unset <K>` | Remove worker env var |
+| `reposwarm config provider setup` | Interactive provider setup (Anthropic, Bedrock, LiteLLM) |
+| `reposwarm config provider set <provider>` | Quick-switch provider (`anthropic`, `bedrock`, `litellm`) |
+| `reposwarm config provider show` | Show provider config + drift detection |
+| `reposwarm config model set <alias\|id>` | Set model (resolves aliases per provider, `--sync` to worker) |
+| `reposwarm config model show` | Show model across CLI, server, and worker |
+| `reposwarm config model list` | List aliases with resolved IDs per provider |
+| `reposwarm config model pin` | Pin all model aliases to current versions |
 | `reposwarm new --local` | Bootstrap complete local installation |
 | `reposwarm upgrade` | Self-update (`--force` to reinstall) |
 
@@ -381,6 +426,29 @@ reposwarm services --json | jq '.[] | {name, status, pid}'
 | `REPOSWARM_API_URL` | Override API URL |
 | `REPOSWARM_API_TOKEN` | Override bearer token |
 
+### Provider Environment Variables
+
+These are set automatically by `config provider setup` — you normally don't need to touch them:
+
+| Variable | When | Description |
+|----------|------|-------------|
+| `CLAUDE_CODE_USE_BEDROCK` | Bedrock | Set to `1` to enable Bedrock mode |
+| `AWS_REGION` | Bedrock | Required (Bedrock doesn't read `.aws/config`) |
+| `ANTHROPIC_MODEL` | All | Primary model ID |
+| `ANTHROPIC_SMALL_FAST_MODEL` | All | Fast/cheap model for triage |
+| `ANTHROPIC_BASE_URL` | LiteLLM | Proxy endpoint URL |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Bedrock | Pinned Opus version |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Bedrock | Pinned Sonnet version |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Bedrock | Pinned Haiku version |
+
+### Model Alias Resolution
+
+| Alias | Anthropic API | Amazon Bedrock |
+|-------|---------------|----------------|
+| `sonnet` | `claude-sonnet-4-6` | `us.anthropic.claude-sonnet-4-6` |
+| `opus` | `claude-opus-4-6` | `us.anthropic.claude-opus-4-6-v1` |
+| `haiku` | `claude-haiku-4-5` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` |
+
 ## Configurable Keys
 
 Set via `reposwarm config set <key> <value>`:
@@ -398,6 +466,12 @@ Set via `reposwarm config set <key> <value>`:
 | `apiPort` | `3000` | API server port |
 | `uiPort` | `3001` | Web UI port |
 | `hubUrl` | — | Project hub URL |
+
+| `provider` | LLM provider (`anthropic`, `bedrock`, `litellm`) |
+| `awsRegion` | AWS region for Bedrock |
+| `proxyUrl` | LiteLLM proxy URL |
+| `proxyKey` | LiteLLM proxy API key |
+| `smallModel` | Fast/cheap model for triage tasks |
 
 ## Development
 
