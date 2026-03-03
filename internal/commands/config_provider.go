@@ -104,11 +104,12 @@ Examples:
 						fmt.Println("  1) iam-role       — EC2 instance profile or ECS task role (recommended)")
 						fmt.Println("  2) long-term-keys — AWS access key + secret")
 						fmt.Println("  3) profile        — Named AWS profile (~/.aws/credentials or SSO)")
+						fmt.Println("  4) api-key        — Bedrock API key (AWS_BEARER_TOKEN_BEDROCK)")
 						fmt.Println()
 
-						authMethod = promptChoice(reader, "Auth method [1/2/3]", map[string]string{
-							"1": "iam-role", "2": "long-term-keys", "3": "profile",
-							"iam-role": "iam-role", "long-term-keys": "long-term-keys", "profile": "profile",
+						authMethod = promptChoice(reader, "Auth method [1/2/3/4]", map[string]string{
+							"1": "iam-role", "2": "long-term-keys", "3": "profile", "4": "api-key",
+							"iam-role": "iam-role", "long-term-keys": "long-term-keys", "profile": "profile", "api-key": "api-key",
 						}, "iam-role")
 					}
 
@@ -207,12 +208,7 @@ Examples:
 				}
 			}
 
-			// Save config
-			if err := config.Save(cfg); err != nil {
-				return fmt.Errorf("saving config: %w", err)
-			}
-
-			// Push env vars to worker via API
+			// Push env vars to worker via API (before saving config, for inference check)
 			workerVars := config.WorkerEnvVars(&cfg.ProviderConfig, model)
 
 			// Add AWS credentials for long-term-keys auth
@@ -227,7 +223,10 @@ Examples:
 			}
 
 			client, clientErr := getClient()
+			inferenceOK := false
+
 			if clientErr == nil {
+				// Sync env vars first (needed for inference check)
 				for k, v := range workerVars {
 					body := map[string]string{"value": v}
 					var resp any
@@ -238,7 +237,7 @@ Examples:
 					}
 				}
 
-				// Run inference health check
+				// Run inference health check BEFORE saving config
 				if !flagJSON {
 					fmt.Println()
 					output.F.Section("Inference Health Check")
@@ -256,38 +255,66 @@ Examples:
 					Hint        string `json:"hint"`
 				}
 
-				// POST to /workers/worker-1/inference-check
 				if err := client.Post(ctx(), "/workers/worker-1/inference-check", nil, &inferenceResp); err != nil {
 					if !flagJSON {
 						output.F.Println()
 						output.F.Warning(fmt.Sprintf("Could not run inference check: %v", err))
+						output.F.Info("The inference-check endpoint may not be available on this API server version.")
+						output.F.Info("Saving config anyway — verify manually with: reposwarm doctor")
+					}
+				} else if inferenceResp.Success {
+					inferenceOK = true
+					if !flagJSON {
+						output.Successf("✓ inference working (%dms)", inferenceResp.LatencyMs)
 					}
 				} else {
-					if flagJSON {
-						// Include in JSON output
-						workerVars["inferenceCheck"] = fmt.Sprintf("%v", inferenceResp.Success)
-					} else {
-						if inferenceResp.Success {
-							output.Successf("✓ inference working (%dms)", inferenceResp.LatencyMs)
-						} else {
-							output.F.Println()
-							output.F.Error(fmt.Sprintf("✗ inference failed: %s", inferenceResp.Error))
-							if inferenceResp.Hint != "" {
-								output.F.Info(fmt.Sprintf("Hint: %s", inferenceResp.Hint))
-							}
+					if !flagJSON {
+						output.F.Println()
+						output.F.Error(fmt.Sprintf("✗ inference FAILED: %s", inferenceResp.Error))
+						if inferenceResp.Hint != "" {
+							output.F.Info(fmt.Sprintf("Hint: %s", inferenceResp.Hint))
 						}
+						fmt.Println()
+						output.F.Warning("⚠ The model could not be reached with these settings.")
+						output.F.Info("Possible fixes:")
+						switch config.BedrockAuthMethod(authMethod) {
+						case config.BedrockAuthIAMRole:
+							output.F.Info("  • Check IAM role has bedrock:InvokeModel permission")
+							output.F.Info("  • Verify the model is enabled in your AWS account/region")
+							output.F.Info("  • Try: aws bedrock list-inference-profiles --region " + region)
+						case config.BedrockAuthLongTermKeys:
+							output.F.Info("  • Check AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are correct")
+							output.F.Info("  • Verify the IAM user has bedrock:InvokeModel permission")
+						case config.BedrockAuthAPIKey:
+							output.F.Info("  • Check AWS_BEARER_TOKEN_BEDROCK is a valid Bedrock API key")
+							output.F.Info("  • See: https://code.claude.com/docs/en/amazon-bedrock")
+						case config.BedrockAuthSSO, config.BedrockAuthProfile:
+							output.F.Info("  • Run: aws sso login --profile=" + cfg.ProviderConfig.AWSProfile)
+							output.F.Info("  • Check profile has bedrock:InvokeModel permission")
+						}
+						if config.Provider(provider) == config.ProviderAnthropic {
+							output.F.Info("  • Check ANTHROPIC_API_KEY is valid")
+							output.F.Info("  • Verify API key has access to the model")
+						}
+						output.F.Info("Saving config anyway — fix the issue and run: reposwarm doctor")
 					}
 				}
 			}
 
+			// Save config (even if inference failed — user can fix later)
+			if err := config.Save(cfg); err != nil {
+				return fmt.Errorf("saving config: %w", err)
+			}
+
 			if flagJSON {
 				return output.JSON(map[string]any{
-					"provider":   provider,
-					"model":      resolved,
-					"region":     region,
-					"proxyUrl":   proxyURL,
-					"pinned":     pin,
-					"workerVars": workerVars,
+					"provider":       provider,
+					"model":          resolved,
+					"region":         region,
+					"proxyUrl":       proxyURL,
+					"pinned":         pin,
+					"workerVars":     workerVars,
+					"inferenceCheck": inferenceOK,
 				})
 			}
 
@@ -327,7 +354,7 @@ Examples:
 	cmd.Flags().StringVar(&proxyKeyFlag, "proxy-key", "", "LiteLLM proxy API key")
 	cmd.Flags().BoolVar(&pinFlag, "pin", false, "Pin model versions")
 	cmd.Flags().BoolVar(&nonInterFlag, "non-interactive", false, "Skip prompts")
-	cmd.Flags().StringVar(&authMethodFlag, "auth-method", "", "Bedrock auth method (iam-role|long-term-keys|profile)")
+	cmd.Flags().StringVar(&authMethodFlag, "auth-method", "", "Bedrock auth method (iam-role|long-term-keys|profile|api-key)")
 	cmd.Flags().StringVar(&awsProfileFlag, "aws-profile", "", "AWS profile name (for profile auth)")
 	cmd.Flags().StringVar(&awsKeyFlag, "aws-key", "", "AWS access key ID (for long-term-keys auth)")
 	cmd.Flags().StringVar(&awsSecretFlag, "aws-secret", "", "AWS secret access key (for long-term-keys auth)")

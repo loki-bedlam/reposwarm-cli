@@ -15,10 +15,11 @@ const (
 type BedrockAuthMethod string
 
 const (
-	BedrockAuthIAMRole      BedrockAuthMethod = "iam-role"       // EC2 instance profile / ECS task role
-	BedrockAuthLongTermKeys BedrockAuthMethod = "long-term-keys" // AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
-	BedrockAuthSSO          BedrockAuthMethod = "sso"            // AWS SSO / Identity Center
-	BedrockAuthProfile      BedrockAuthMethod = "profile"        // Named AWS profile (~/.aws/credentials)
+	BedrockAuthIAMRole      BedrockAuthMethod = "iam-role"        // EC2 instance profile / ECS task role
+	BedrockAuthLongTermKeys BedrockAuthMethod = "long-term-keys"  // AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+	BedrockAuthSSO          BedrockAuthMethod = "sso"             // AWS SSO / Identity Center
+	BedrockAuthProfile      BedrockAuthMethod = "profile"         // Named AWS profile (~/.aws/credentials)
+	BedrockAuthAPIKey       BedrockAuthMethod = "api-key"         // AWS_BEARER_TOKEN_BEDROCK (Bedrock API keys)
 )
 
 // ValidProviders returns all supported provider names.
@@ -129,6 +130,8 @@ func WorkerEnvVars(pc *ProviderConfig, model string) map[string]string {
 			if pc.AWSProfile != "" {
 				vars["AWS_PROFILE"] = pc.AWSProfile
 			}
+		case BedrockAuthAPIKey:
+			// AWS_BEARER_TOKEN_BEDROCK is stored separately, set by CLI
 		case BedrockAuthIAMRole, "":
 			// IAM role auth - no extra env vars needed (inherited from instance/task)
 		}
@@ -199,6 +202,10 @@ func RequiredEnvVars(pc *ProviderConfig) []EnvRequirement {
 		case BedrockAuthSSO, BedrockAuthProfile:
 			reqs = append(reqs,
 				EnvRequirement{Key: "AWS_PROFILE", Desc: "AWS profile name", Required: true},
+			)
+		case BedrockAuthAPIKey:
+			reqs = append(reqs,
+				EnvRequirement{Key: "AWS_BEARER_TOKEN_BEDROCK", Desc: "Bedrock API key", Required: true},
 			)
 		case BedrockAuthIAMRole, "":
 			// No extra keys — inherited from instance/task role

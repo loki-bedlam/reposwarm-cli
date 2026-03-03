@@ -391,8 +391,17 @@ func checkWorkerEnv() []checkResult {
 	}
 
 	required := map[string]string{
-		"ANTHROPIC_API_KEY": "Anthropic API key (for LLM calls)",
-		"GITHUB_TOKEN":      "GitHub token (for repo access)",
+		"GITHUB_TOKEN": "GitHub token (for repo access)",
+	}
+
+	// Add provider-specific requirements (don't hardcode ANTHROPIC_API_KEY for all providers)
+	cfg, cfgErr := config.Load()
+	if cfgErr == nil {
+		for _, req := range config.RequiredEnvVars(&cfg.ProviderConfig) {
+			if req.Required {
+				required[req.Key] = req.Desc
+			}
+		}
 	}
 
 	for _, entry := range envResp.Entries {
