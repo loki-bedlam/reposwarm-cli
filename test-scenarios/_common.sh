@@ -109,11 +109,18 @@ summary() {
 wait_for_api() {
   local max_wait=${1:-60}
   local waited=0
+  local restarted=0
   step "Waiting for API at $API_URL (max ${max_wait}s)..."
   while [ $waited -lt $max_wait ]; do
     if curl -sf "$API_URL/health" >/dev/null 2>&1; then
       echo -e "  ${GREEN}✓${NC} API is up (${waited}s)"
       return 0
+    fi
+    # Auto-restart API if down after 10s
+    if [ $waited -ge 10 ] && [ $restarted -eq 0 ] && [ -f /tmp/start-api.sh ]; then
+      echo -e "  ${YELLOW}!${NC} API down - restarting via start-api.sh"
+      setsid /tmp/start-api.sh </dev/null >/dev/null 2>&1 &
+      restarted=1
     fi
     sleep 2
     waited=$((waited + 2))
