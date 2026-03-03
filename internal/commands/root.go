@@ -100,6 +100,9 @@ Get started:
 	// Prompts
 	root.AddCommand(newPromptsCmd())
 
+	// AI Assistant
+	root.AddCommand(newAskCmd())
+
 
 
 	return root
