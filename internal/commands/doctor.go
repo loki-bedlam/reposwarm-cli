@@ -705,6 +705,34 @@ func checkWorkerEnv() []checkResult {
 		}
 	}
 
+	// Check for required/optional vars NOT returned by the API (e.g. git provider vars)
+	checked := map[string]bool{}
+	for _, entry := range envResp.Entries {
+		checked[entry.Key] = true
+	}
+
+	for key, desc := range required {
+		if checked[key] {
+			continue
+		}
+		// Not in API response — treat as not set
+		c := checkResult{key, "fail", fmt.Sprintf("NOT SET — %s", desc)}
+		printCheck(c)
+		results = append(results, c)
+		if !flagJSON {
+			fmt.Printf("     Set it: %s\n", output.Cyan(fmt.Sprintf("reposwarm config worker-env set %s <value>", key)))
+		}
+	}
+
+	for key, desc := range optional {
+		if checked[key] {
+			continue
+		}
+		c := checkResult{key, "warn", fmt.Sprintf("not set — %s", desc)}
+		printCheck(c)
+		results = append(results, c)
+	}
+
 	return results
 }
 

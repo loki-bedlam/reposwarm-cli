@@ -89,11 +89,14 @@ reposwarm logs worker -f
 ```
 
 **What `doctor` catches:**
-- Missing env vars (ANTHROPIC_API_KEY, GITHUB_TOKEN, AWS credentials)
-- Worker log errors and tracebacks
+- Missing env vars — driven by `providers.json` (single source of truth for LLM + git provider requirements)
+- Git provider auth: GITHUB_TOKEN, GITLAB_TOKEN, AZURE_DEVOPS_PAT, etc. (based on configured git provider)
+- Worker log runtime errors (crashes, tracebacks — env validation noise filtered out)
 - Per-worker health in multi-worker setups
 - Stalled workflows with zero progress
 - Config, API, Temporal, DynamoDB connectivity
+- Version compatibility (API ↔ CLI)
+- CLI update availability (checks GitHub releases)
 
 **What `errors` catches:**
 - Activity failures, timeouts, workflow failures
@@ -159,6 +162,72 @@ reposwarm config model pin
 # Restart worker to apply changes
 reposwarm restart worker
 ```
+
+### 🔧 Configure Git Provider
+
+Tell RepoSwarm which git hosting platform your repos are on, so it knows what credentials to require:
+
+```bash
+# Interactive setup
+reposwarm config git setup
+
+# Direct set
+reposwarm config git set github        # GitHub (needs GITHUB_TOKEN)
+reposwarm config git set codecommit    # AWS CodeCommit (needs IAM + AWS CLI)
+reposwarm config git set gitlab        # GitLab (needs GITLAB_TOKEN)
+reposwarm config git set azure         # Azure DevOps (needs AZURE_DEVOPS_PAT + ORG)
+reposwarm config git set bitbucket     # Bitbucket (needs USERNAME + APP_PASSWORD)
+
+# Show current config + required env vars
+reposwarm config git show
+```
+
+After setting the git provider, `doctor` will check for the correct authentication variables:
+
+```bash
+reposwarm doctor
+# Worker Environment
+#   ✗ GITHUB_TOKEN — NOT SET — GitHub personal access token
+#      Set it: reposwarm config worker-env set GITHUB_TOKEN <value>
+```
+
+### 📋 View Changelog
+
+```bash
+reposwarm changelog                    # Current version's release notes
+reposwarm changelog v1.3.50            # Specific version
+reposwarm changelog latest             # Latest release
+reposwarm changelog --all              # All releases with dates
+reposwarm changelog --since v1.3.45    # Cumulative changes since a version
+```
+
+### ⬆️ Upgrade Components
+
+```bash
+reposwarm upgrade                      # Upgrade CLI to latest
+reposwarm upgrade api                  # Upgrade API server (git pull + build + restart)
+reposwarm upgrade ui                   # Upgrade UI
+reposwarm upgrade all                  # Upgrade all components
+```
+
+### 🌐 Remote Access via SSH Tunnel
+
+When RepoSwarm runs on a remote server (EC2, VPS), access the web UI through an SSH tunnel:
+
+```bash
+reposwarm tunnel                       # Shows copy-paste SSH tunnel command
+```
+
+### 🗑️ Uninstall
+
+```bash
+reposwarm uninstall                    # Interactive removal
+reposwarm uninstall --force            # Skip confirmation
+reposwarm uninstall --keep-config      # Keep ~/.reposwarm for reinstall
+```
+
+For local installs: stops all services, runs `docker compose down`, removes files.
+For remote CLI-only setups: removes the binary and config, warns about the server.
 
 ### 🔧 Fix a Stuck Investigation (End-to-End)
 
@@ -440,6 +509,21 @@ These are set automatically by `config provider setup` — you normally don't ne
 | `ANTHROPIC_DEFAULT_OPUS_MODEL` | Bedrock | Pinned Opus version |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | Bedrock | Pinned Sonnet version |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Bedrock | Pinned Haiku version |
+
+### Git Provider Environment Variables
+
+Set via `config git set <provider>` — determines which credentials are required:
+
+| Variable | Git Provider | Description |
+|----------|-------------|-------------|
+| `GITHUB_TOKEN` | GitHub | Personal access token (scopes: repo) |
+| `GITLAB_TOKEN` | GitLab | Personal/project access token |
+| `GITLAB_URL` | GitLab | Instance URL (optional, default: gitlab.com) |
+| `AZURE_DEVOPS_PAT` | Azure DevOps | Personal access token |
+| `AZURE_DEVOPS_ORG` | Azure DevOps | Organization URL |
+| `BITBUCKET_USERNAME` | Bitbucket | Bitbucket username |
+| `BITBUCKET_APP_PASSWORD` | Bitbucket | App password |
+| `AWS_REGION` | CodeCommit | AWS region (uses IAM for auth) |
 
 ### Model Alias Resolution
 
