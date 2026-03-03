@@ -73,6 +73,7 @@ Get started:
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newUpgradeCmd(version))
 	root.AddCommand(newChangelogCmd(version))
+	root.AddCommand(newUninstallCmd())
 	root.AddCommand(newShowCmd())
 	root.AddCommand(newURLCmd())
 
