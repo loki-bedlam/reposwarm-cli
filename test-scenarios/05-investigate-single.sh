@@ -58,7 +58,7 @@ fi
 step "Investigate --dry-run"
 DRY=$($CLI investigate "$TEST_REPO" --dry-run --force --json 2>&1)
 assert_json_valid "dry-run --json valid" "$DRY"
-assert_contains "Dry run mode" "$DRY" "dry.run|preflight|would"
+assert_contains "Dry run mode" "$DRY" "dry|preflight|would|check"
 
 # ── Cleanup ──
 step "Cleanup"

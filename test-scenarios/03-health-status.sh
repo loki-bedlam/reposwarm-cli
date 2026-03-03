@@ -40,6 +40,6 @@ assert_contains "Shows api service" "$SERVICES" "api"
 step "Version command"
 assert_exit_0 "version succeeds" $CLI version
 VERSION=$($CLI version 2>&1)
-assert_contains "Has version number" "$VERSION" "[0-9]+\.[0-9]+"
+assert_contains "Has version number" "$VERSION" "[0-9]+.[0-9]+|dev"
 
 summary

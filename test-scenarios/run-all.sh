@@ -34,7 +34,10 @@ for scenario in "$DIR"/[0-9]*.sh; do
   fi
 
   echo -e "\n${BOLD}Running: $name${NC}"
-  if bash "$scenario" 2>&1 | tee "/tmp/reposwarm-scenario-${name}.log"; then
+  bash "$scenario" > "/tmp/reposwarm-scenario-${name}.log" 2>&1
+  EXIT_CODE=$?
+  cat "/tmp/reposwarm-scenario-${name}.log"
+  if [ $EXIT_CODE -eq 0 ]; then
     PASSED_SCENARIOS+=("$name")
   else
     FAILED_SCENARIOS+=("$name")

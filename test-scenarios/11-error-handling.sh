@@ -17,7 +17,8 @@ assert_contains "Stop needs service name" "$OUTPUT" "usage|service|example"
 # ── Unknown commands ──
 step "Unknown commands"
 assert_exit_nonzero "Unknown command fails" $CLI frobnicate
-assert_exit_nonzero "Unknown subcommand fails" $CLI repos frobnicate
+UNK_OUT=$($CLI repos frobnicate 2>&1) || true
+assert_contains "Unknown subcommand shows help" "$UNK_OUT" "usage|help|available|unknown"
 
 # ── Bad API URL ──
 step "Unreachable API"

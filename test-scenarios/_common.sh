@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Shared test helpers for RepoSwarm CLI E2E scenarios
-set -euo pipefail
+set -uo pipefail
 
 # ── Colors ──
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'; BOLD='\033[1m'
@@ -31,14 +31,14 @@ assert_exit_0() {
   local output
   if output=$("$@" 2>&1); then
     echo -e "  ${GREEN}✓${NC} $desc"
-    ((PASS_COUNT++))
+    PASS_COUNT=$((PASS_COUNT + 1))
     echo "$output" >> "$TEST_LOG"
   else
     local code=$?
     echo -e "  ${RED}✗${NC} $desc (exit $code)"
     echo "    CMD: $*"
     echo "    OUTPUT: $(echo "$output" | tail -5)"
-    ((FAIL_COUNT++))
+    FAIL_COUNT=$((FAIL_COUNT + 1))
     echo "FAIL: $desc | CMD: $* | OUTPUT: $output" >> "$TEST_LOG"
   fi
 }
@@ -48,10 +48,10 @@ assert_exit_nonzero() {
   local output
   if output=$("$@" 2>&1); then
     echo -e "  ${RED}✗${NC} $desc (expected failure, got exit 0)"
-    ((FAIL_COUNT++))
+    FAIL_COUNT=$((FAIL_COUNT + 1))
   else
     echo -e "  ${GREEN}✓${NC} $desc (correctly failed)"
-    ((PASS_COUNT++))
+    PASS_COUNT=$((PASS_COUNT + 1))
   fi
 }
 
@@ -59,11 +59,11 @@ assert_contains() {
   local desc="$1"; local output="$2"; local pattern="$3"
   if echo "$output" | grep -qiE "$pattern"; then
     echo -e "  ${GREEN}✓${NC} $desc"
-    ((PASS_COUNT++))
+    PASS_COUNT=$((PASS_COUNT + 1))
   else
     echo -e "  ${RED}✗${NC} $desc (pattern not found: $pattern)"
     echo "    OUTPUT: $(echo "$output" | head -5)"
-    ((FAIL_COUNT++))
+    FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 }
 
@@ -71,10 +71,10 @@ assert_json_key() {
   local desc="$1"; local output="$2"; local key="$3"
   if echo "$output" | python3 -c "import sys,json; d=json.load(sys.stdin); assert '$key' in str(d)" 2>/dev/null; then
     echo -e "  ${GREEN}✓${NC} $desc"
-    ((PASS_COUNT++))
+    PASS_COUNT=$((PASS_COUNT + 1))
   else
     echo -e "  ${RED}✗${NC} $desc (key '$key' not in JSON)"
-    ((FAIL_COUNT++))
+    FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 }
 
@@ -82,16 +82,16 @@ assert_json_valid() {
   local desc="$1"; local output="$2"
   if echo "$output" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
     echo -e "  ${GREEN}✓${NC} $desc"
-    ((PASS_COUNT++))
+    PASS_COUNT=$((PASS_COUNT + 1))
   else
     echo -e "  ${RED}✗${NC} $desc (invalid JSON)"
-    ((FAIL_COUNT++))
+    FAIL_COUNT=$((FAIL_COUNT + 1))
   fi
 }
 
 skip() {
   echo -e "  ${YELLOW}⊘${NC} $1 (skipped)"
-  ((SKIP_COUNT++))
+  SKIP_COUNT=$((SKIP_COUNT + 1))
 }
 
 summary() {
