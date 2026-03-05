@@ -1,18 +1,18 @@
 # reposwarm-cli
 
-CLI for [RepoSwarm](https://github.com/loki-bedlam/reposwarm-ui) — AI-powered multi-repo architecture discovery.
+CLI for [RepoSwarm](https://github.com/reposwarm/reposwarm) — AI-powered multi-repo architecture discovery.
 
 Written in Go. Single 9MB binary, zero runtime dependencies, 4ms startup.
 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/loki-bedlam/reposwarm-cli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/reposwarm/reposwarm-cli/main/install.sh | sh
 ```
 
 Or build from source:
 ```bash
-git clone https://github.com/loki-bedlam/reposwarm-cli.git
+git clone https://github.com/reposwarm/reposwarm-cli.git
 cd reposwarm-cli
 go build -o reposwarm ./cmd/reposwarm
 ```
