@@ -16,16 +16,17 @@ import (
 // Config is a subset of the full CLI config used by SetupLocal.
 // Avoids importing the config package (which would create a cycle).
 type Config struct {
-	WorkerRepoURL  string
-	APIRepoURL     string
-	UIRepoURL      string
-	DynamoDBTable  string
-	DefaultModel   string
-	TemporalPort   string
-	TemporalUIPort string
-	APIPort        string
-	UIPort         string
-	Region         string
+	WorkerRepoURL   string
+	APIRepoURL      string
+	UIRepoURL       string
+	DynamoDBTable   string
+	DefaultModel    string
+	TemporalPort    string
+	TemporalUIPort  string
+	APIPort         string
+	UIPort          string
+	Region          string
+	ProviderEnvVars map[string]string // Provider-specific env vars (CLAUDE_CODE_USE_BEDROCK, CLAUDE_PROVIDER, etc.)
 }
 
 // LocalSetupResult holds the outcome of each setup step.

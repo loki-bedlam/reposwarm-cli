@@ -19,9 +19,10 @@ type Environment struct {
 	Shell        string `json:"shell"`
 
 	// Runtimes
-	HasDocker    bool   `json:"hasDocker"`
-	DockerVer    string `json:"dockerVersion,omitempty"`
-	HasCompose   bool   `json:"hasDockerCompose"`
+	HasDocker      bool   `json:"hasDocker"`
+	DockerRunning  bool   `json:"dockerRunning"`
+	DockerVer      string `json:"dockerVersion,omitempty"`
+	HasCompose     bool   `json:"hasDockerCompose"`
 	ComposeVer   string `json:"composeVersion,omitempty"`
 	HasNode      bool   `json:"hasNode"`
 	NodeVer      string `json:"nodeVersion,omitempty"`
@@ -64,6 +65,11 @@ func Detect() *Environment {
 
 	// Runtimes
 	env.DockerVer, env.HasDocker = cmdVersion("docker", "--version")
+	if env.HasDocker {
+		// Check if Docker daemon is actually running
+		pingCmd := exec.Command("docker", "info")
+		env.DockerRunning = pingCmd.Run() == nil
+	}
 	env.ComposeVer, env.HasCompose = cmdVersion("docker", "compose", "version")
 	env.NodeVer, env.HasNode = cmdVersion("node", "--version")
 	env.PythonVer, env.HasPython = cmdVersionAny([][]string{{"python3", "--version"}, {"python", "--version"}})
@@ -117,6 +123,8 @@ func (e *Environment) MissingDeps() []string {
 	var missing []string
 	if !e.HasDocker {
 		missing = append(missing, "docker")
+	} else if !e.DockerRunning {
+		missing = append(missing, "docker (installed but not running — start Docker Desktop or the Docker daemon)")
 	}
 	if !e.HasCompose {
 		missing = append(missing, "docker-compose")

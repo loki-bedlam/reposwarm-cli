@@ -28,6 +28,7 @@
       "envVars": {
         "always": [
           { "key": "CLAUDE_CODE_USE_BEDROCK", "desc": "Enable Bedrock mode", "required": true, "value": "1" },
+          { "key": "CLAUDE_PROVIDER", "desc": "LLM provider type", "required": true, "value": "bedrock" },
           { "key": "AWS_REGION", "desc": "AWS region for Bedrock", "required": true, "alts": ["AWS_DEFAULT_REGION"] },
           { "key": "ANTHROPIC_MODEL", "desc": "Bedrock model ID", "required": true },
           { "key": "ANTHROPIC_SMALL_FAST_MODEL", "desc": "Small/fast model for triage", "required": false }
@@ -37,8 +38,8 @@
             "label": "EC2 instance profile or ECS task role (recommended)",
             "envVars": []
           },
-          "long-term-keys": {
-            "label": "AWS access key + secret (Bedrock API keys)",
+          "access-keys": {
+            "label": "AWS access key + secret key (AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY)",
             "envVars": [
               { "key": "AWS_ACCESS_KEY_ID", "desc": "AWS access key ID", "required": true, "secret": true },
               { "key": "AWS_SECRET_ACCESS_KEY", "desc": "AWS secret access key", "required": true, "secret": true }
@@ -50,10 +51,10 @@
               { "key": "AWS_PROFILE", "desc": "AWS profile name", "required": true }
             ]
           },
-          "sso": {
-            "label": "AWS SSO / Identity Center",
+          "api-keys": {
+            "label": "Bedrock API keys (from AWS console → Bedrock → API keys)",
             "envVars": [
-              { "key": "AWS_PROFILE", "desc": "AWS SSO profile name", "required": true }
+              { "key": "AWS_BEARER_TOKEN_BEDROCK", "desc": "Bedrock API key", "required": true, "secret": true }
             ]
           }
         },

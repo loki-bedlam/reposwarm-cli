@@ -19,6 +19,50 @@ go build -o reposwarm ./cmd/reposwarm
 
 ---
 
+## 🤖 Agent-Native
+
+Every command supports `--for-agent` for machine-friendly output. No spinners, no colors, no interactive prompts — just clean text that AI agents can parse.
+
+```bash
+# Agent gets JSON output
+reposwarm status --for-agent --json
+
+# Full local setup — zero human interaction needed
+reposwarm new --local --for-agent
+
+# Configure provider non-interactively
+reposwarm config provider setup --provider bedrock --auth-method iam-role --region us-east-1 --non-interactive
+
+# Debug logs (truncated at 5000 chars, with path to full file)
+reposwarm debug-logs --for-agent
+
+# Investigate and get results
+reposwarm investigate https://github.com/org/repo --for-agent
+reposwarm results read my-repo --for-agent
+```
+
+Designed for [OpenClaw](https://openclaw.ai), Claude Code, Codex, and any AI coding agent.
+
+---
+
+## Prerequisites
+
+For **local setup** (`reposwarm new --local`):
+
+| Tool | Version | Notes |
+|------|---------|-------|
+| Docker | 24+ | **Must be running** (not just installed) |
+| Docker Compose | v2 | Usually bundled with Docker Desktop |
+| Node.js | 22+ | For API and UI servers |
+| Python | 3.11+ | For the worker |
+| Git | 2.x | For cloning repos |
+
+> ⚠️ **Docker must be running.** The CLI checks this during setup and will warn you if Docker is installed but the daemon isn't started.
+
+For **remote setup** (connecting to an existing server): just the CLI binary. No other dependencies.
+
+---
+
 ## Cookbook
 
 Real workflows, copy-paste ready. Each recipe is a complete flow.
@@ -75,7 +119,10 @@ The 2-minute flow that finds any issue:
 # Step 1: What's wrong?
 reposwarm doctor
 
-# Step 2: Check for stalled workflows + worker errors
+# Step 2: Full install log (paged for humans, text dump for agents)
+reposwarm debug-logs
+
+# Step 3: Check for stalled workflows + worker errors
 reposwarm errors
 
 # Step 3: Zoom in on a specific workflow
@@ -136,7 +183,24 @@ reposwarm config provider setup \
   --provider bedrock \
   --region us-east-1 \
   --model opus \
-  --pin \
+  --auth-method iam-role \
+  --non-interactive
+
+# Bedrock with AWS access keys
+reposwarm config provider setup \
+  --provider bedrock \
+  --auth-method access-keys \
+  --aws-key AKIA... \
+  --aws-secret wJalr... \
+  --region us-east-1 \
+  --non-interactive
+
+# Bedrock with API keys (from AWS console → Bedrock → API keys)
+reposwarm config provider setup \
+  --provider bedrock \
+  --auth-method api-keys \
+  --bedrock-key br-... \
+  --region us-east-1 \
   --non-interactive
 
 # Non-interactive: use LiteLLM proxy

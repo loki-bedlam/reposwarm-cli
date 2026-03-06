@@ -33,8 +33,9 @@ func newProviderSetupCmd() *cobra.Command {
 		nonInterFlag   bool
 		authMethodFlag string
 		awsProfileFlag string
-		awsKeyFlag     string
-		awsSecretFlag  string
+		awsKeyFlag        string
+		awsSecretFlag     string
+		bedrockAPIKeyFlag string
 	)
 
 	cmd := &cobra.Command{
@@ -70,6 +71,7 @@ Examples:
 			awsProfile := awsProfileFlag
 			awsKey := awsKeyFlag
 			awsSecret := awsSecretFlag
+			bedrockAPIKey := bedrockAPIKeyFlag
 
 			if !nonInterFlag && provider == "" {
 				// Interactive mode
@@ -101,25 +103,31 @@ Examples:
 						fmt.Println()
 						fmt.Println("  How does the worker authenticate with AWS?")
 						fmt.Println()
-						fmt.Println("  1) iam-role        — EC2 instance profile or ECS task role (recommended)")
-						fmt.Println("  2) long-term-keys  — AWS access key + secret (Bedrock API keys)")
-						fmt.Println("  3) profile         — Named AWS profile (~/.aws/credentials or SSO)")
+						fmt.Println("  1) iam-role     — EC2 instance profile or ECS task role (recommended)")
+						fmt.Println("  2) access-keys  — AWS access key + secret key")
+						fmt.Println("  3) profile      — Named AWS profile (~/.aws/credentials or SSO)")
+						fmt.Println("  4) api-keys     — Bedrock API keys (from AWS console)")
 						fmt.Println()
 
-						authMethod = promptChoice(reader, "Auth method [1/2/3]", map[string]string{
-							"1": "iam-role", "2": "long-term-keys", "3": "profile",
-							"iam-role": "iam-role", "long-term-keys": "long-term-keys", "profile": "profile",
+						authMethod = promptChoice(reader, "Auth method [1/2/3/4]", map[string]string{
+							"1": "iam-role", "2": "access-keys", "3": "profile", "4": "api-keys",
+							"iam-role": "iam-role", "access-keys": "access-keys", "profile": "profile", "api-keys": "api-keys",
+							"long-term-keys": "access-keys", // legacy alias
 						}, "iam-role")
 					}
 
 					// Prompt for auth-specific info
 					switch config.BedrockAuthMethod(authMethod) {
-					case config.BedrockAuthLongTermKeys:
+					case config.BedrockAuthLongTermKeys, config.BedrockAuthAccessKeys:
 						if awsKey == "" {
 							awsKey = promptString(reader, "AWS Access Key ID", "")
 						}
 						if awsSecret == "" {
 							awsSecret = promptString(reader, "AWS Secret Access Key", "")
+						}
+					case config.BedrockAuthAPIKeys:
+						if bedrockAPIKey == "" {
+							bedrockAPIKey = promptString(reader, "Bedrock API Key", "")
 						}
 					case config.BedrockAuthProfile, config.BedrockAuthSSO:
 						if awsProfile == "" {
@@ -210,14 +218,22 @@ Examples:
 			// Push env vars to worker via API (before saving config, for inference check)
 			workerVars := config.WorkerEnvVars(&cfg.ProviderConfig, model)
 
-			// Add AWS credentials for long-term-keys auth
+			// Add AWS credentials for access-keys auth
 			if config.Provider(provider) == config.ProviderBedrock &&
-			   config.BedrockAuthMethod(authMethod) == config.BedrockAuthLongTermKeys {
+			   (config.BedrockAuthMethod(authMethod) == config.BedrockAuthLongTermKeys ||
+			    config.BedrockAuthMethod(authMethod) == config.BedrockAuthAccessKeys) {
 				if awsKey != "" {
 					workerVars["AWS_ACCESS_KEY_ID"] = awsKey
 				}
 				if awsSecret != "" {
 					workerVars["AWS_SECRET_ACCESS_KEY"] = awsSecret
+				}
+			}
+			// Add Bedrock API key for api-keys auth
+			if config.Provider(provider) == config.ProviderBedrock &&
+			   config.BedrockAuthMethod(authMethod) == config.BedrockAuthAPIKeys {
+				if bedrockAPIKey != "" {
+					workerVars["AWS_BEARER_TOKEN_BEDROCK"] = bedrockAPIKey
 				}
 			}
 
@@ -281,9 +297,12 @@ Examples:
 							output.F.Info("  • Check IAM role has bedrock:InvokeModel permission")
 							output.F.Info("  • Verify the model is enabled in your AWS account/region")
 							output.F.Info("  • Try: aws bedrock list-inference-profiles --region " + region)
-						case config.BedrockAuthLongTermKeys:
+						case config.BedrockAuthLongTermKeys, config.BedrockAuthAccessKeys:
 							output.F.Info("  • Check AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are correct")
 							output.F.Info("  • Verify the IAM user has bedrock:InvokeModel permission")
+						case config.BedrockAuthAPIKeys:
+							output.F.Info("  • Check AWS_BEARER_TOKEN_BEDROCK is a valid Bedrock API key")
+							output.F.Info("  • Get one from: AWS Console → Bedrock → API keys")
 						case config.BedrockAuthSSO, config.BedrockAuthProfile:
 							output.F.Info("  • Run: aws sso login --profile=" + cfg.ProviderConfig.AWSProfile)
 							output.F.Info("  • Check profile has bedrock:InvokeModel permission")
@@ -350,10 +369,11 @@ Examples:
 	cmd.Flags().StringVar(&proxyKeyFlag, "proxy-key", "", "LiteLLM proxy API key")
 	cmd.Flags().BoolVar(&pinFlag, "pin", false, "Pin model versions")
 	cmd.Flags().BoolVar(&nonInterFlag, "non-interactive", false, "Skip prompts")
-	cmd.Flags().StringVar(&authMethodFlag, "auth-method", "", "Bedrock auth method (iam-role|long-term-keys|profile)")
+	cmd.Flags().StringVar(&authMethodFlag, "auth-method", "", "Bedrock auth method (iam-role|access-keys|profile|api-keys)")
 	cmd.Flags().StringVar(&awsProfileFlag, "aws-profile", "", "AWS profile name (for profile auth)")
-	cmd.Flags().StringVar(&awsKeyFlag, "aws-key", "", "AWS access key ID (for long-term-keys auth)")
-	cmd.Flags().StringVar(&awsSecretFlag, "aws-secret", "", "AWS secret access key (for long-term-keys auth)")
+	cmd.Flags().StringVar(&awsKeyFlag, "aws-key", "", "AWS access key ID (for access-keys auth)")
+	cmd.Flags().StringVar(&awsSecretFlag, "aws-secret", "", "AWS secret access key (for access-keys auth)")
+	cmd.Flags().StringVar(&bedrockAPIKeyFlag, "bedrock-key", "", "Bedrock API key (for api-keys auth)")
 	return cmd
 }
 
@@ -653,7 +673,7 @@ func newProviderShowCmd() *cobra.Command {
 					// Special case for IAM role auth - show inherited message
 					if pc.Provider == config.ProviderBedrock &&
 					   (pc.BedrockAuth == config.BedrockAuthIAMRole || pc.BedrockAuth == "") {
-						// Check if we're NOT using long-term keys
+						// Check if we're NOT using access keys
 						_, hasAccessKey := currentEnv["AWS_ACCESS_KEY_ID"]
 						_, hasSecretKey := currentEnv["AWS_SECRET_ACCESS_KEY"]
 						if !hasAccessKey && !hasSecretKey {

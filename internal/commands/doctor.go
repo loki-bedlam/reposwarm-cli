@@ -926,7 +926,7 @@ func checkProviderCredentials(priorChecks []checkResult) []checkResult {
 		}
 
 		switch authMethod {
-		case config.BedrockAuthLongTermKeys:
+		case config.BedrockAuthLongTermKeys, config.BedrockAuthAccessKeys:
 			hasKey := currentEnv["AWS_ACCESS_KEY_ID"] != ""
 			hasSecret := currentEnv["AWS_SECRET_ACCESS_KEY"] != ""
 			if hasKey && hasSecret {

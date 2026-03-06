@@ -397,7 +397,7 @@ func restartLocal(svc string) error {
 }
 
 func toBsConfig(cfg *config.Config) *bootstrap.Config {
-	return &bootstrap.Config{
+	bsCfg := &bootstrap.Config{
 		APIPort:        cfg.EffectiveAPIPort(),
 		UIPort:         cfg.EffectiveUIPort(),
 		TemporalPort:   cfg.EffectiveTemporalPort(),
@@ -405,7 +405,13 @@ func toBsConfig(cfg *config.Config) *bootstrap.Config {
 		DynamoDBTable:  cfg.EffectiveDynamoDBTable(),
 		DefaultModel:   cfg.EffectiveModel(),
 		Region:         cfg.Region,
+		WorkerRepoURL:  cfg.EffectiveWorkerRepoURL(),
+		APIRepoURL:     cfg.EffectiveAPIRepoURL(),
+		UIRepoURL:      cfg.EffectiveUIRepoURL(),
 	}
+	// Include provider env vars so worker gets CLAUDE_CODE_USE_BEDROCK etc.
+	bsCfg.ProviderEnvVars = config.WorkerEnvVars(&cfg.ProviderConfig, cfg.EffectiveModel())
+	return bsCfg
 }
 
 func waitForLocalHealth(url string, timeoutSec int) error {

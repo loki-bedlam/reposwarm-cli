@@ -231,7 +231,7 @@ func TestRequiredEnvVarsWithGit(t *testing.T) {
 		{
 			name:        "bedrock + long-term-keys + azure",
 			provider:    ProviderBedrock,
-			authMethod:  BedrockAuthLongTermKeys,
+			authMethod:  BedrockAuthAccessKeys,
 			gitProvider: "azure",
 			wantKeys:    []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AZURE_DEVOPS_PAT", "AZURE_DEVOPS_ORG"},
 		},

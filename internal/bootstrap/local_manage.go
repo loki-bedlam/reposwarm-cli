@@ -325,6 +325,10 @@ func localStartWorker(installDir string, cfg *Config) error {
 		fmt.Sprintf("DYNAMODB_TABLE=%s", orDefaultStr(cfg.DynamoDBTable, "reposwarm-cache")),
 		fmt.Sprintf("DEFAULT_MODEL=%s", orDefaultStr(cfg.DefaultModel, "us.anthropic.claude-sonnet-4-6")),
 	)
+	// Add provider-specific env vars (CLAUDE_CODE_USE_BEDROCK, CLAUDE_PROVIDER, etc.)
+	for k, v := range cfg.ProviderEnvVars {
+		startCmd.Env = append(startCmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
 	if err := startCmd.Start(); err != nil {
 		logFile.Close()
 		return fmt.Errorf("starting worker: %w", err)
