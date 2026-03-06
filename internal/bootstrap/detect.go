@@ -119,6 +119,7 @@ func (e *Environment) AgentName() string {
 }
 
 // MissingDeps returns a list of missing required dependencies.
+// With Docker images, only Docker and Compose are required.
 func (e *Environment) MissingDeps() []string {
 	var missing []string
 	if !e.HasDocker {
@@ -129,14 +130,8 @@ func (e *Environment) MissingDeps() []string {
 	if !e.HasCompose {
 		missing = append(missing, "docker-compose")
 	}
-	if !e.HasNpm {
-		missing = append(missing, "npm (comes with Node.js)")
-	}
-	if !e.HasNode {
-		missing = append(missing, "node (v22+)")
-	}
-	if !e.HasPython {
-		missing = append(missing, "python3 (3.11+)")
+	if !e.HasGit {
+		missing = append(missing, "git")
 	}
 	if e.HasPython && !e.HasPythonVenv {
 		missing = append(missing, "python3-venv (apt install python3-venv)")

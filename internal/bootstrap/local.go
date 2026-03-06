@@ -109,46 +109,19 @@ func SetupLocal(env *Environment, installDir string, cfg *Config, printer Printe
 	printer.Success(fmt.Sprintf("Install directory: %s", installDir))
 	result.Steps = append(result.Steps, LocalStepResult{"directories", "ok", installDir})
 
-	// Step 2: Start Temporal
-	log.Section("Temporal Setup")
-	printer.Section("Starting Temporal (Docker Compose)")
-	if err := setupTemporal(installDir, cfg, printer, log); err != nil {
-		result.Steps = append(result.Steps, LocalStepResult{"temporal", "fail", err.Error()})
-		return result, fmt.Errorf("temporal setup: %w", err)
+	// Step 2: Start all services (Temporal + API + Worker + UI via Docker Compose)
+	log.Section("Docker Compose Setup")
+	printer.Section("Starting all services (Docker Compose)")
+	if err := setupDocker(installDir, cfg, token, printer, log); err != nil {
+		result.Steps = append(result.Steps, LocalStepResult{"docker-compose", "fail", err.Error()})
+		return result, fmt.Errorf("docker compose setup: %w", err)
 	}
 	result.Steps = append(result.Steps, LocalStepResult{"temporal", "ok", fmt.Sprintf("http://localhost:%s", cfg.TemporalUIPort)})
-
-	// Step 3: Clone and start API
-	log.Section("API Setup")
-	printer.Section("Setting up API server")
-	if err := setupAPI(installDir, cfg, token, printer, log); err != nil {
-		result.Steps = append(result.Steps, LocalStepResult{"api", "fail", err.Error()})
-		return result, fmt.Errorf("API setup: %w", err)
-	}
 	result.Steps = append(result.Steps, LocalStepResult{"api", "ok", fmt.Sprintf("http://localhost:%s", cfg.APIPort)})
+	result.Steps = append(result.Steps, LocalStepResult{"worker", "ok", ""})
+	result.Steps = append(result.Steps, LocalStepResult{"ui", "ok", fmt.Sprintf("http://localhost:%s", cfg.UIPort)})
 
-	// Step 4: Clone and start Worker
-	log.Section("Worker Setup")
-	printer.Section("Setting up Worker")
-	if err := setupWorker(installDir, cfg, printer, log); err != nil {
-		printer.Warning(fmt.Sprintf("Worker setup failed: %s (investigations won't run, but API/UI will work)", err))
-		result.Steps = append(result.Steps, LocalStepResult{"worker", "fail", err.Error()})
-		// Don't return error — worker is optional for basic functionality
-	} else {
-		result.Steps = append(result.Steps, LocalStepResult{"worker", "ok", ""})
-	}
-
-	// Step 5: Clone and start UI
-	log.Section("UI Setup")
-	printer.Section("Setting up UI")
-	if err := setupUI(installDir, cfg, printer, log); err != nil {
-		printer.Warning(fmt.Sprintf("UI setup failed: %s (CLI still works)", err))
-		result.Steps = append(result.Steps, LocalStepResult{"ui", "fail", err.Error()})
-	} else {
-		result.Steps = append(result.Steps, LocalStepResult{"ui", "ok", fmt.Sprintf("http://localhost:%s", cfg.UIPort)})
-	}
-
-	// Step 6: Configure CLI
+	// Step 3: Configure CLI
 	printer.Section("Configuring CLI")
 	if err := configureCLI(cfg, token); err != nil {
 		result.Steps = append(result.Steps, LocalStepResult{"cli-config", "fail", err.Error()})
@@ -204,7 +177,7 @@ func killProcessOnPort(port string) {
 	// Give it a moment to release the port
 	time.Sleep(500 * time.Millisecond)
 }
-func setupTemporal(installDir string, cfg *Config, printer Printer, log *InstallLog) error {
+func setupDocker(installDir string, cfg *Config, token string, printer Printer, log *InstallLog) error {
 	temporalDir := filepath.Join(installDir, "temporal")
 	if err := os.MkdirAll(temporalDir, 0755); err != nil {
 		return err
@@ -216,6 +189,31 @@ func setupTemporal(installDir string, cfg *Config, printer Printer, log *Install
 	}
 	printer.Info("Wrote docker-compose.yml")
 	log.Info("Wrote docker-compose.yml to " + composePath)
+
+	// Write .env file with token, ports, and passthrough env vars
+	envVars := []string{
+		fmt.Sprintf("API_BEARER_TOKEN=%s", token),
+		fmt.Sprintf("API_PORT=%s", cfg.APIPort),
+		fmt.Sprintf("UI_PORT=%s", cfg.UIPort),
+	}
+	// Pass through LLM and git provider env vars from host
+	for _, key := range []string{
+		"ANTHROPIC_API_KEY", "CLAUDE_CODE_USE_BEDROCK", "AWS_REGION",
+		"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+		"AWS_BEARER_TOKEN_BEDROCK", "AWS_PROFILE",
+		"ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL",
+		"GITHUB_TOKEN", "GITLAB_TOKEN",
+	} {
+		if v := os.Getenv(key); v != "" {
+			envVars = append(envVars, fmt.Sprintf("%s=%s", key, v))
+		}
+	}
+	envPath := filepath.Join(temporalDir, ".env")
+	if err := os.WriteFile(envPath, []byte(strings.Join(envVars, "\n")+"\n"), 0600); err != nil {
+		return fmt.Errorf("writing .env: %w", err)
+	}
+	printer.Info("Wrote .env")
+	log.Info("Wrote .env to " + envPath)
 
 	// docker compose up -d
 	out, err := log.RunCmd(temporalDir, "docker", "compose", "up", "-d")
@@ -234,6 +232,29 @@ func setupTemporal(installDir string, cfg *Config, printer Printer, log *Install
 	}
 	printer.Success("Temporal is ready")
 	log.Success("Temporal is ready")
+
+	// Wait for API to be ready
+	printer.Info("Waiting for API server...")
+	log.Info("Waiting for API on port " + cfg.APIPort)
+	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s/v1/health", cfg.APIPort), 120*time.Second); err != nil {
+		statusOut, _ := log.RunCmd(temporalDir, "docker", "compose", "ps", "--format", "{{.Name}}\t{{.Status}}")
+		logsOut, _ := log.RunCmd(temporalDir, "docker", "compose", "logs", "api", "--tail", "30")
+		return fmt.Errorf("API not ready after 120s: %w\nContainer status:\n%s\nAPI logs:\n%s", err, string(statusOut), string(logsOut))
+	}
+	printer.Success("API server is ready")
+	log.Success("API server is ready")
+
+	// Wait for UI to be ready
+	printer.Info("Waiting for UI...")
+	log.Info("Waiting for UI on port " + cfg.UIPort)
+	if err := waitForHTTP(fmt.Sprintf("http://localhost:%s", cfg.UIPort), 120*time.Second); err != nil {
+		printer.Warning("UI not ready yet — may still be starting. Check: docker compose logs ui")
+		log.Warning("UI not ready after 120s")
+	} else {
+		printer.Success("UI is ready")
+		log.Success("UI is ready")
+	}
+
 	return nil
 }
 
@@ -620,11 +641,68 @@ func TemporalComposeLocal() string {
     volumes:
       - dynamodb-data:/home/dynamodblocal/data
 
+  api:
+    image: ghcr.io/reposwarm/api:latest
+    ports:
+      - "${API_PORT:-3000}:3000"
+    environment:
+      - PORT=3000
+      - API_BEARER_TOKEN=${API_BEARER_TOKEN}
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE=${DYNAMODB_TABLE:-reposwarm-cache}
+      - REPOSWARM_INSTALL_DIR=/app
+    depends_on:
+      - temporal
+      - dynamodb-local
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    image: ghcr.io/reposwarm/worker:latest
+    environment:
+      - TEMPORAL_SERVER_URL=temporal:7233
+      - TEMPORAL_NAMESPACE=default
+      - TEMPORAL_TASK_QUEUE=investigate-task-queue
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE=${DYNAMODB_TABLE:-reposwarm-cache}
+      - LOCAL_TESTING=true
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:-}
+      - AWS_PROFILE=${AWS_PROFILE:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITLAB_TOKEN=${GITLAB_TOKEN:-}
+    depends_on:
+      - temporal
+      - dynamodb-local
+
+  ui:
+    image: ghcr.io/reposwarm/ui:latest
+    ports:
+      - "${UI_PORT:-3001}:3000"
+    environment:
+      - TEMPORAL_SERVER_URL=http://temporal-ui:8080
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_CACHE_TABLE=${DYNAMODB_TABLE:-reposwarm-cache}
+    depends_on:
+      api:
+        condition: service_healthy
+
   askbox:
     image: ghcr.io/reposwarm/askbox:latest
-    build:
-      context: ../askbox
-      dockerfile: Dockerfile
     environment:
       - ASKBOX_ADAPTER=${ASKBOX_ADAPTER:-claude-agent-sdk}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
