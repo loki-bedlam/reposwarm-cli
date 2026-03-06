@@ -2,6 +2,8 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,6 +15,27 @@ import (
 )
 
 var knownServices = []string{"api", "worker", "temporal", "ui"}
+
+// resolveInstallDir finds the local installation directory.
+// Checks the configured installDir first, then tries cwd and cwd/reposwarm.
+// Updates config if found in an alternative location.
+func resolveInstallDir(cfg *config.Config) (string, error) {
+	installDir := cfg.EffectiveInstallDir()
+	if bootstrap.IsLocalInstall(installDir) {
+		return installDir, nil
+	}
+
+	cwd, _ := os.Getwd()
+	for _, candidate := range []string{cwd, filepath.Join(cwd, "reposwarm")} {
+		if bootstrap.IsLocalInstall(candidate) {
+			cfg.InstallDir = candidate
+			_ = config.Save(cfg)
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("no local installation found at %s\nRun 'reposwarm new --local' to set up, or set it with: reposwarm config set installDir /path/to/install", installDir)
+}
 
 func newServicesCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -296,10 +319,9 @@ func startLocal(svc string, wait bool) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-	installDir := cfg.EffectiveInstallDir()
-
-	if !bootstrap.IsLocalInstall(installDir) {
-		return fmt.Errorf("no local installation found at %s\nRun 'reposwarm new --local' to set up, or check your installDir config", installDir)
+	installDir, err := resolveInstallDir(cfg)
+	if err != nil {
+		return err
 	}
 
 	bsCfg := toBsConfig(cfg)
@@ -335,7 +357,10 @@ func stopLocal(svc string) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-	installDir := cfg.EffectiveInstallDir()
+	installDir, err := resolveInstallDir(cfg)
+	if err != nil {
+		return err
+	}
 
 	bsCfg := toBsConfig(cfg)
 	if err := bootstrap.LocalStop(installDir, svc, bsCfg); err != nil {
@@ -355,10 +380,9 @@ func restartLocal(svc string) error {
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-	installDir := cfg.EffectiveInstallDir()
-
-	if !bootstrap.IsLocalInstall(installDir) {
-		return fmt.Errorf("no local installation found at %s", installDir)
+	installDir, err := resolveInstallDir(cfg)
+	if err != nil {
+		return err
 	}
 
 	bsCfg := toBsConfig(cfg)

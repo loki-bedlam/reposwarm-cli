@@ -79,11 +79,18 @@ Examples:
 					if err != nil {
 						return output.JSON(result)
 					}
+					// Persist installDir so 'start/stop/restart' find it
+					cliCfg.InstallDir = dir
+					_ = config.Save(cliCfg)
 					return output.JSON(result)
 				}
 				if flagAgent {
 					printer := &fmtPrinter{}
 					_, err := bootstrap.SetupLocal(env, dir, bsCfg, printer)
+					if err == nil {
+						cliCfg.InstallDir = dir
+						_ = config.Save(cliCfg)
+					}
 					return err
 				}
 
@@ -103,6 +110,10 @@ Examples:
 				if err != nil {
 					return err
 				}
+
+				// Persist installDir so 'start/stop/restart' find the right directory
+				cliCfg.InstallDir = dir
+				_ = config.Save(cliCfg)
 
 				// ── Post-setup: Provider configuration ──
 				fmt.Println()
