@@ -648,15 +648,20 @@ func TemporalComposeLocal() string {
     environment:
       - PORT=3000
       - API_BEARER_TOKEN=${API_BEARER_TOKEN}
-      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_SERVER_URL=temporal:7233
+      - TEMPORAL_HTTP_URL=http://temporal-ui:8080
       - TEMPORAL_NAMESPACE=default
       - AWS_REGION=${AWS_REGION:-us-east-1}
       - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
       - DYNAMODB_TABLE=${DYNAMODB_TABLE:-reposwarm-cache}
       - REPOSWARM_INSTALL_DIR=/app
     depends_on:
-      - temporal
-      - dynamodb-local
+      temporal:
+        condition: service_started
+      temporal-ui:
+        condition: service_started
+      dynamodb-local:
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/v1/health"]
       interval: 10s
