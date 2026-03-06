@@ -51,6 +51,7 @@ type Config struct {
 	APIRepoURL     string `json:"apiRepoUrl,omitempty"`
 	UIRepoURL      string `json:"uiRepoUrl,omitempty"`
 	HubURL         string `json:"hubUrl,omitempty"`
+	ArchHubURL     string `json:"archHubUrl,omitempty"`
 	DynamoDBTable  string `json:"dynamodbTable,omitempty"`
 	TemporalPort   string `json:"temporalPort,omitempty"`
 	TemporalUIPort string `json:"temporalUiPort,omitempty"`
@@ -132,7 +133,7 @@ func DefaultConfig() *Config {
 func ValidKeys() []string {
 	return []string{
 		"apiUrl", "apiToken", "region", "defaultModel", "chunkSize", "outputFormat",
-		"workerRepoUrl", "apiRepoUrl", "uiRepoUrl", "hubUrl", "dynamodbTable",
+		"workerRepoUrl", "apiRepoUrl", "uiRepoUrl", "hubUrl", "archHubUrl", "dynamodbTable",
 		"temporalPort", "temporalUiPort", "apiPort", "uiPort", "installDir",
 		"provider", "awsRegion", "proxyUrl", "proxyKey", "smallModel",
 	}
@@ -241,6 +242,8 @@ func Set(cfg *Config, key, value string) error {
 		cfg.UIRepoURL = value
 	case "hubUrl":
 		cfg.HubURL = value
+	case "archHubUrl":
+		cfg.ArchHubURL = value
 	case "dynamodbTable":
 		cfg.DynamoDBTable = value
 	case "temporalPort":

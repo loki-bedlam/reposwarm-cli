@@ -1,21 +1,27 @@
 package commands
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/reposwarm/reposwarm-cli/internal/api"
+	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
 func newAskCmd() *cobra.Command {
 	var archFlag bool
+	var localFlag bool
 	var reposFlag string
 	var adapterFlag string
 	var noWaitFlag bool
+	var hubURLFlag string
+	var modelFlag string
 
 	cmd := &cobra.Command{
 		Use:   "ask <question>",
@@ -23,16 +29,20 @@ func newAskCmd() *cobra.Command {
 		Long: `Ask a question about RepoSwarm or your architecture.
 
 Without --arch: asks about RepoSwarm CLI usage (fast, simple Q&A).
-With --arch:    queries your architecture docs using the askbox agent (slower, thorough).
+With --arch:    queries your architecture docs using the askbox agent.
 
-The askbox reads your .arch.md files and reasons across repos to answer
-complex architecture questions.
+Modes:
+  --arch              Use the askbox agent for architecture analysis
+  --arch --local      Run askbox via Docker locally (no API server needed)
+  --arch              Route through the API server (default when connected)
 
 Flags:
-  --arch              Use the askbox agent for architecture analysis
   --repos <list>      Comma-separated repos to scope the question to
   --adapter <name>    Agent adapter: claude-agent-sdk (default) or strands
+  --model <id>        Override LLM model
+  --hub-url <url>     Arch-hub git URL (or set archHubUrl in config)
   --no-wait           Return ask-id immediately without waiting for answer
+  --local             Run askbox container directly via Docker
 
 Output modes:
   (default)           Human-friendly with progress indicators
@@ -42,16 +52,33 @@ Output modes:
 Examples:
   reposwarm ask "how do I add a new repo?"
   reposwarm ask --arch "how does auth work across all services?"
+  reposwarm ask --arch --local "what databases are used?"
+  reposwarm ask --arch --local --hub-url https://github.com/org/arch-hub.git "summarize auth"
   reposwarm ask --arch --repos my-api,billing "how do they communicate?"
-  reposwarm ask --arch --adapter strands "what databases are used?"
+  reposwarm ask --arch --adapter strands "what patterns exist?"
   reposwarm ask --arch --no-wait --json "what patterns do repos share?"
   reposwarm ask --arch --for-agent "summarize the test strategies"`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			question := strings.Join(args, " ")
 
+			if archFlag && localFlag {
+				return runLocalArchAsk(question, hubURLFlag, reposFlag, adapterFlag, modelFlag)
+			}
+
 			client, err := getClient()
 			if err != nil {
+				if archFlag {
+					// Can't reach API — suggest --local
+					if flagJSON {
+						return output.JSON(map[string]any{
+							"success": false,
+							"error":   "cannot connect to API server",
+							"hint":    "use --local to run askbox directly via Docker",
+						})
+					}
+					return fmt.Errorf("cannot connect to API server\n  💡 Use --local to run askbox directly via Docker")
+				}
 				return err
 			}
 
@@ -64,11 +91,165 @@ Examples:
 	}
 
 	cmd.Flags().BoolVar(&archFlag, "arch", false, "Query architecture docs using the askbox agent")
+	cmd.Flags().BoolVar(&localFlag, "local", false, "Run askbox container directly via Docker (no API needed)")
 	cmd.Flags().StringVar(&reposFlag, "repos", "", "Comma-separated list of repos to scope the question to")
 	cmd.Flags().StringVar(&adapterFlag, "adapter", "", "Agent adapter: claude-agent-sdk (default) or strands")
-	cmd.Flags().BoolVar(&noWaitFlag, "no-wait", false, "Submit and return ask-id without waiting (for agents)")
+	cmd.Flags().StringVar(&modelFlag, "model", "", "Override LLM model ID")
+	cmd.Flags().StringVar(&hubURLFlag, "hub-url", "", "Arch-hub git URL (overrides config)")
+	cmd.Flags().BoolVar(&noWaitFlag, "no-wait", false, "Submit and return ask-id without waiting (API mode only)")
 
 	return cmd
+}
+
+// runLocalArchAsk runs the askbox Docker container directly — no API server needed.
+func runLocalArchAsk(question, hubURL, repos, adapter, model string) error {
+	// Resolve arch-hub URL: flag > config > error
+	if hubURL == "" {
+		cfg, _ := config.Load()
+		if cfg != nil {
+			hubURL = cfg.ArchHubURL
+		}
+	}
+	if hubURL == "" {
+		if flagJSON {
+			return output.JSON(map[string]any{
+				"success": false,
+				"error":   "arch-hub URL required",
+				"hint":    "use --hub-url or: reposwarm config set archHubUrl <git-url>",
+			})
+		}
+		return fmt.Errorf("arch-hub URL required\n  💡 Use --hub-url <git-url> or: reposwarm config set archHubUrl <url>")
+	}
+
+	// Check Docker is available
+	if _, err := exec.LookPath("docker"); err != nil {
+		if flagJSON {
+			return output.JSON(map[string]any{"success": false, "error": "docker not found in PATH"})
+		}
+		return fmt.Errorf("docker not found — install Docker to use --local")
+	}
+
+	if !flagJSON && !flagAgent {
+		fmt.Printf("  %s Running askbox locally via Docker...\n", output.Dim("🐳"))
+	}
+
+	// Build docker run args
+	args := []string{
+		"run", "--rm",
+		"-e", fmt.Sprintf("QUESTION=%s", question),
+		"-e", fmt.Sprintf("ARCH_HUB_URL=%s", hubURL),
+	}
+
+	if repos != "" {
+		args = append(args, "-e", fmt.Sprintf("REPOS_FILTER=%s", repos))
+	}
+	if adapter != "" {
+		args = append(args, "-e", fmt.Sprintf("ASKBOX_ADAPTER=%s", adapter))
+	}
+	if model != "" {
+		args = append(args, "-e", fmt.Sprintf("MODEL_ID=%s", model))
+	}
+
+	// Pass through LLM auth env vars (whatever the user has set)
+	for _, env := range []string{
+		"ANTHROPIC_API_KEY",
+		"CLAUDE_CODE_USE_BEDROCK",
+		"AWS_REGION",
+		"AWS_ACCESS_KEY_ID",
+		"AWS_SECRET_ACCESS_KEY",
+		"AWS_SESSION_TOKEN",
+		"AWS_PROFILE",
+		"AWS_BEARER_TOKEN_BEDROCK",
+		"ANTHROPIC_BASE_URL",
+		"LITELLM_API_URL",
+		"LITELLM_API_KEY",
+	} {
+		if v := os.Getenv(env); v != "" {
+			args = append(args, "-e", fmt.Sprintf("%s=%s", env, v))
+		}
+	}
+
+	args = append(args, "ghcr.io/reposwarm/askbox:latest")
+
+	cmd := exec.Command("docker", args...)
+	cmd.Stderr = os.Stderr
+
+	// Stream stdout for real-time output
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		if flagJSON {
+			return output.JSON(map[string]any{"success": false, "error": fmt.Sprintf("docker run failed: %v", err)})
+		}
+		return fmt.Errorf("docker run failed: %w", err)
+	}
+
+	// Collect output
+	var answer strings.Builder
+	var lastLine string
+	inAnswer := false
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// The askbox prints [askbox] status lines, then the answer after "ANSWER:"
+		if strings.HasPrefix(line, "[askbox]") {
+			if !flagJSON && !flagAgent {
+				fmt.Printf("\r\033[K  %s %s\n", output.Dim("⠋"), strings.TrimPrefix(line, "[askbox] "))
+			}
+			continue
+		}
+		if strings.Contains(line, "ANSWER:") {
+			inAnswer = true
+			continue
+		}
+		if strings.Contains(line, "========") {
+			continue
+		}
+		if inAnswer {
+			answer.WriteString(line)
+			answer.WriteString("\n")
+		}
+		lastLine = line
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if flagJSON {
+			return output.JSON(map[string]any{"success": false, "error": fmt.Sprintf("askbox failed: %v", err)})
+		}
+		_ = lastLine
+		return fmt.Errorf("askbox failed: %w", err)
+	}
+
+	result := strings.TrimSpace(answer.String())
+	if result == "" {
+		if flagJSON {
+			return output.JSON(map[string]any{"success": false, "error": "askbox returned empty answer"})
+		}
+		return fmt.Errorf("askbox returned empty answer")
+	}
+
+	if flagJSON {
+		return output.JSON(map[string]any{
+			"success": true,
+			"answer":  result,
+			"chars":   len(result),
+			"mode":    "local",
+		})
+	}
+
+	if flagAgent {
+		fmt.Print(result)
+		return nil
+	}
+
+	fmt.Printf("\r\033[K  %s Answer ready (%d chars)\n\n", output.Green("✓"), len(result))
+	fmt.Println(result)
+
+	return nil
 }
 
 func runSimpleAsk(client *api.Client, question string) error {
@@ -181,7 +362,6 @@ func runArchAsk(client *api.Client, question, repos, adapter string, noWait bool
 				"status":  "pending",
 			})
 		}
-		// --for-agent: plain text ask-id
 		if flagAgent {
 			fmt.Printf("ask-id: %s\nstatus: pending\n", askID)
 			return nil
