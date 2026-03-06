@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -93,14 +94,14 @@ Examples:
 			if err != nil {
 				output.F.Warning(fmt.Sprintf("Could not fetch changelog: %v", err))
 				fmt.Println()
-				fmt.Printf("  View online: https://github.com/reposwarm/reposwarm-cli/releases/tag/v%s\n\n", targetVersion)
+				fmt.Printf("  View online: %s/tag/v%s\n\n", config.CLIReleasesURL, targetVersion)
 				return nil
 			}
 
 			if len(changes) == 0 {
 				output.F.Info("No changelog entries found for this version")
 				fmt.Println()
-				fmt.Printf("  View online: https://github.com/reposwarm/reposwarm-cli/releases/tag/v%s\n\n", targetVersion)
+				fmt.Printf("  View online: %s/tag/v%s\n\n", config.CLIReleasesURL, targetVersion)
 				return nil
 			}
 
@@ -116,7 +117,7 @@ Examples:
 				}
 			}
 
-			fmt.Printf("  Full release: https://github.com/reposwarm/reposwarm-cli/releases/tag/v%s\n\n", targetVersion)
+			fmt.Printf("  Full release: %s/tag/v%s\n\n", config.CLIReleasesURL, targetVersion)
 			return nil
 		},
 	}
@@ -255,7 +256,7 @@ func showChangesSince(since string, currentVersion string) error {
 }
 
 func fetchAllReleases(limit int) ([]releaseEntry, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/reposwarm/reposwarm-cli/releases?per_page=%d", limit)
+	url := fmt.Sprintf("%s?per_page=%d", config.CLIReleasesAPI, limit)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err

@@ -9,6 +9,28 @@ import (
 	"strings"
 )
 
+// GitHub organization and repository constants.
+// Change these in ONE place when the org or repo names change.
+const (
+	GitHubOrg     = "reposwarm"
+	GitHubCLIRepo = "reposwarm-cli"
+	GitHubAPIRepo = "reposwarm-api"
+	GitHubUIRepo  = "reposwarm-ui"
+	GitHubCore    = "reposwarm"
+
+	OrgBaseURL = "https://github.com/" + GitHubOrg
+	APIBaseURL = "https://api.github.com/repos/" + GitHubOrg
+
+	DefaultCoreRepoURL = OrgBaseURL + "/" + GitHubCore + ".git"
+	DefaultAPIRepoURL  = OrgBaseURL + "/" + GitHubAPIRepo + ".git"
+	DefaultUIRepoURL   = OrgBaseURL + "/" + GitHubUIRepo + ".git"
+	DefaultUIHubURL    = OrgBaseURL + "/" + GitHubUIRepo
+	DefaultCLIRepoURL  = OrgBaseURL + "/" + GitHubCLIRepo
+
+	CLIReleasesAPI  = APIBaseURL + "/" + GitHubCLIRepo + "/releases"
+	CLIReleasesURL  = DefaultCLIRepoURL + "/releases"
+)
+
 // Config holds all CLI configuration.
 type Config struct {
 	APIUrl       string `json:"apiUrl"`
@@ -41,22 +63,22 @@ type Config struct {
 
 func (c *Config) EffectiveWorkerRepoURL() string {
 	if c.WorkerRepoURL != "" { return c.WorkerRepoURL }
-	return "https://github.com/royosherove/repo-swarm.git"
+	return DefaultCoreRepoURL
 }
 
 func (c *Config) EffectiveAPIRepoURL() string {
 	if c.APIRepoURL != "" { return c.APIRepoURL }
-	return "https://github.com/reposwarm/reposwarm-api.git"
+	return DefaultAPIRepoURL
 }
 
 func (c *Config) EffectiveUIRepoURL() string {
 	if c.UIRepoURL != "" { return c.UIRepoURL }
-	return "https://github.com/reposwarm/reposwarm-ui.git"
+	return DefaultUIRepoURL
 }
 
 func (c *Config) EffectiveHubURL() string {
 	if c.HubURL != "" { return c.HubURL }
-	return "https://github.com/reposwarm/reposwarm-ui"
+	return DefaultUIHubURL
 }
 
 func (c *Config) EffectiveDynamoDBTable() string {

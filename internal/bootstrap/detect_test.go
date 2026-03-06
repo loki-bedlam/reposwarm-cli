@@ -8,7 +8,7 @@ import (
 
 func testConfig() *Config {
 	return &Config{
-		WorkerRepoURL:  "https://github.com/royosherove/repo-swarm.git",
+		WorkerRepoURL:  "https://github.com/reposwarm/reposwarm.git",
 		APIRepoURL:     "https://github.com/reposwarm/reposwarm-api.git",
 		UIRepoURL:      "https://github.com/reposwarm/reposwarm-ui.git",
 		DynamoDBTable:  "reposwarm-cache",
