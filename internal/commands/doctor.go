@@ -149,14 +149,14 @@ func runAutoFixes(checks []checkResult) {
 			Name: "Upgrade API server",
 			Desc: "reposwarm upgrade api",
 			Fix: func() error {
-				return upgradeService("api", false)
+				return upgradeDockerService("api", false)
 			},
 		},
 		"UI version": {
 			Name: "Upgrade UI",
 			Desc: "reposwarm upgrade ui",
 			Fix: func() error {
-				return upgradeService("ui", false)
+				return upgradeDockerService("ui", false)
 			},
 		},
 	}
