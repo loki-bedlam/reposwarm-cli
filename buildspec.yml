@@ -48,16 +48,16 @@ phases:
       - aws s3 sync dist/ s3://bedlam-assets-1770361238/assets/reposwarm-cli/latest/ --region us-east-1
       - echo "Creating GitHub release v${VERSION}..."
       - export GITHUB_TOKEN="$GH_RELEASE_TOKEN"
-      - gh release delete "v${VERSION}" --repo loki-bedlam/reposwarm-cli --yes 2>/dev/null || true
+      - gh release delete "v${VERSION}" --repo reposwarm/reposwarm-cli --yes 2>/dev/null || true
       - |
         gh release create "v${VERSION}" \
           dist/reposwarm-darwin-arm64 \
           dist/reposwarm-darwin-amd64 \
           dist/reposwarm-linux-arm64 \
           dist/reposwarm-linux-amd64 \
-          --repo loki-bedlam/reposwarm-cli \
+          --repo reposwarm/reposwarm-cli \
           --title "v${VERSION}" \
-          --notes "Built by CodePipeline. Install: \`curl -fsSL https://raw.githubusercontent.com/loki-bedlam/reposwarm-cli/main/install.sh | sh\`"
+          --notes "Built by CodePipeline. Install: \`curl -fsSL https://raw.githubusercontent.com/reposwarm/reposwarm-cli/main/install.sh | sh\`"
       - echo "✅ Release v${VERSION} published"
 
 artifacts:

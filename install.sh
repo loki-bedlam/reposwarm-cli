@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-REPO="loki-bedlam/reposwarm-cli"
+REPO="reposwarm/reposwarm-cli"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Detect OS and arch

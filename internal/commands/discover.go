@@ -3,8 +3,8 @@ package commands
 import (
 	"fmt"
 
-	"github.com/loki-bedlam/reposwarm-cli/internal/api"
-	"github.com/loki-bedlam/reposwarm-cli/internal/output"
+	"github.com/reposwarm/reposwarm-cli/internal/api"
+	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 

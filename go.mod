@@ -1,4 +1,4 @@
-module github.com/loki-bedlam/reposwarm-cli
+module github.com/reposwarm/reposwarm-cli
 
 go 1.24
 

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loki-bedlam/reposwarm-cli/internal/config"
-	"github.com/loki-bedlam/reposwarm-cli/internal/output"
+	"github.com/reposwarm/reposwarm-cli/internal/config"
+	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 

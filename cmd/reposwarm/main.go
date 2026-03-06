@@ -1,6 +1,6 @@
 package main
 
-import "github.com/loki-bedlam/reposwarm-cli/internal/commands"
+import "github.com/reposwarm/reposwarm-cli/internal/commands"
 
 var version = "dev"
 

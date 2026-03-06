@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/loki-bedlam/reposwarm-cli/internal/config"
-	"github.com/loki-bedlam/reposwarm-cli/internal/output"
+	"github.com/reposwarm/reposwarm-cli/internal/config"
+	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -212,7 +212,7 @@ type ghRelease struct {
 
 func getLatestRelease() (version, downloadURL string, err error) {
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get("https://api.github.com/repos/loki-bedlam/reposwarm-cli/releases/latest")
+	resp, err := client.Get("https://api.github.com/repos/reposwarm/reposwarm-cli/releases/latest")
 	if err != nil {
 		return "", "", err
 	}
@@ -248,7 +248,7 @@ func getChangelog(oldVersion, newVersion string) ([]string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
 	// Fetch the new release body — it contains the changelog
-	resp, err := client.Get(fmt.Sprintf("https://api.github.com/repos/loki-bedlam/reposwarm-cli/releases/tags/v%s", newVersion))
+	resp, err := client.Get(fmt.Sprintf("https://api.github.com/repos/reposwarm/reposwarm-cli/releases/tags/v%s", newVersion))
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +289,7 @@ func getChangelog(oldVersion, newVersion string) ([]string, error) {
 	// Limit to 20 lines
 	if len(changes) > 20 {
 		changes = changes[:20]
-		changes = append(changes, fmt.Sprintf("  ... and more (see https://github.com/loki-bedlam/reposwarm-cli/releases/tag/v%s)", newVersion))
+		changes = append(changes, fmt.Sprintf("  ... and more (see https://github.com/reposwarm/reposwarm-cli/releases/tag/v%s)", newVersion))
 	}
 
 	return changes, nil

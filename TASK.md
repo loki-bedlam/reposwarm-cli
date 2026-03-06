@@ -81,7 +81,7 @@ volumes:
 ### 4. Clone and start API server
 ```bash
 cd {installDir}
-git clone https://github.com/loki-bedlam/reposwarm-api.git api
+git clone https://github.com/reposwarm/reposwarm-api.git api
 cd api && npm install && npm run build
 ```
 Create `.env` with:
@@ -111,7 +111,7 @@ Start with `nohup python -m worker.main > {installDir}/worker/worker.log 2>&1 &`
 ### 6. Clone and start UI
 ```bash
 cd {installDir}
-git clone https://github.com/loki-bedlam/reposwarm-ui.git ui
+git clone https://github.com/reposwarm/reposwarm-ui.git ui
 cd ui && npm install
 ```
 Create `.env.local` with `NEXT_PUBLIC_API_URL=http://localhost:3000`

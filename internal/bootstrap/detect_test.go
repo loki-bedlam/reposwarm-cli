@@ -9,8 +9,8 @@ import (
 func testConfig() *Config {
 	return &Config{
 		WorkerRepoURL:  "https://github.com/royosherove/repo-swarm.git",
-		APIRepoURL:     "https://github.com/loki-bedlam/reposwarm-api.git",
-		UIRepoURL:      "https://github.com/loki-bedlam/reposwarm-ui.git",
+		APIRepoURL:     "https://github.com/reposwarm/reposwarm-api.git",
+		UIRepoURL:      "https://github.com/reposwarm/reposwarm-ui.git",
 		DynamoDBTable:  "reposwarm-cache",
 		DefaultModel:   "us.anthropic.claude-sonnet-4-6",
 		TemporalPort:   "7233",

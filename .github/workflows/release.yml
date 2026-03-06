@@ -61,7 +61,7 @@ jobs:
             echo "$CHANGES"
             echo ""
             echo "---"
-            echo "Install: \`curl -fsSL https://raw.githubusercontent.com/loki-bedlam/reposwarm-cli/main/install.sh | sh\`"
+            echo "Install: \`curl -fsSL https://raw.githubusercontent.com/reposwarm/reposwarm-cli/main/install.sh | sh\`"
             echo "Upgrade: \`reposwarm upgrade\`"
           } > /tmp/release-notes.md
 

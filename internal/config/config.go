@@ -46,17 +46,17 @@ func (c *Config) EffectiveWorkerRepoURL() string {
 
 func (c *Config) EffectiveAPIRepoURL() string {
 	if c.APIRepoURL != "" { return c.APIRepoURL }
-	return "https://github.com/loki-bedlam/reposwarm-api.git"
+	return "https://github.com/reposwarm/reposwarm-api.git"
 }
 
 func (c *Config) EffectiveUIRepoURL() string {
 	if c.UIRepoURL != "" { return c.UIRepoURL }
-	return "https://github.com/loki-bedlam/reposwarm-ui.git"
+	return "https://github.com/reposwarm/reposwarm-ui.git"
 }
 
 func (c *Config) EffectiveHubURL() string {
 	if c.HubURL != "" { return c.HubURL }
-	return "https://github.com/loki-bedlam/reposwarm-ui"
+	return "https://github.com/reposwarm/reposwarm-ui"
 }
 
 func (c *Config) EffectiveDynamoDBTable() string {
