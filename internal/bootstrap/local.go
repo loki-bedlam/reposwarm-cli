@@ -183,6 +183,17 @@ func setupDocker(installDir string, cfg *Config, token string, printer Printer, 
 		return err
 	}
 
+	// Free ports that might be used by existing non-Docker services
+	for _, port := range []string{cfg.APIPort, cfg.UIPort, cfg.TemporalPort, cfg.TemporalUIPort} {
+		killProcessOnPort(port)
+	}
+
+	// Stop any existing compose stack in this directory
+	if _, err := os.Stat(filepath.Join(temporalDir, "docker-compose.yml")); err == nil {
+		printer.Info("Stopping existing containers...")
+		log.RunCmd(temporalDir, "docker", "compose", "down")
+	}
+
 	composePath := filepath.Join(temporalDir, "docker-compose.yml")
 	if err := os.WriteFile(composePath, []byte(TemporalComposeLocal()), 0644); err != nil {
 		return fmt.Errorf("writing docker-compose.yml: %w", err)
