@@ -50,6 +50,9 @@ func TestWorkerEnvVars(t *testing.T) {
 		if vars["CLAUDE_CODE_USE_BEDROCK"] != "1" {
 			t.Error("Expected CLAUDE_CODE_USE_BEDROCK=1")
 		}
+		if vars["CLAUDE_PROVIDER"] != "bedrock" {
+			t.Error("Expected CLAUDE_PROVIDER=bedrock")
+		}
 		if vars["AWS_REGION"] != "us-west-2" {
 			t.Errorf("Expected AWS_REGION=us-west-2, got %s", vars["AWS_REGION"])
 		}
@@ -134,7 +137,7 @@ func TestRequiredEnvVars(t *testing.T) {
 				Provider:    ProviderBedrock,
 				BedrockAuth: BedrockAuthIAMRole,
 			},
-			expected: []string{"CLAUDE_CODE_USE_BEDROCK", "AWS_REGION", "ANTHROPIC_MODEL"},
+			expected: []string{"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_PROVIDER", "AWS_REGION", "ANTHROPIC_MODEL"},
 		},
 		{
 			name: "Bedrock with access keys",
@@ -142,7 +145,7 @@ func TestRequiredEnvVars(t *testing.T) {
 				Provider:    ProviderBedrock,
 				BedrockAuth: BedrockAuthAccessKeys,
 			},
-			expected: []string{"CLAUDE_CODE_USE_BEDROCK", "AWS_REGION", "ANTHROPIC_MODEL",
+			expected: []string{"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_PROVIDER", "AWS_REGION", "ANTHROPIC_MODEL",
 				"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"},
 		},
 		{
@@ -151,7 +154,7 @@ func TestRequiredEnvVars(t *testing.T) {
 				Provider:    ProviderBedrock,
 				BedrockAuth: BedrockAuthProfile,
 			},
-			expected: []string{"CLAUDE_CODE_USE_BEDROCK", "AWS_REGION", "ANTHROPIC_MODEL", "AWS_PROFILE"},
+			expected: []string{"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_PROVIDER", "AWS_REGION", "ANTHROPIC_MODEL", "AWS_PROFILE"},
 		},
 		{
 			name: "Bedrock with SSO",
@@ -159,7 +162,7 @@ func TestRequiredEnvVars(t *testing.T) {
 				Provider:    ProviderBedrock,
 				BedrockAuth: BedrockAuthSSO,
 			},
-			expected: []string{"CLAUDE_CODE_USE_BEDROCK", "AWS_REGION", "ANTHROPIC_MODEL", "AWS_PROFILE"},
+			expected: []string{"CLAUDE_CODE_USE_BEDROCK", "CLAUDE_PROVIDER", "AWS_REGION", "ANTHROPIC_MODEL", "AWS_PROFILE"},
 		},
 		{
 			name: "LiteLLM provider",
@@ -251,6 +254,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 			},
 			currentEnv: map[string]string{
 				"CLAUDE_CODE_USE_BEDROCK": "1",
+				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1",
 				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
 			},
@@ -277,6 +281,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 			},
 			currentEnv: map[string]string{
 				"CLAUDE_CODE_USE_BEDROCK": "1",
+				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1",
 				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
 				"AWS_ACCESS_KEY_ID":       "AKIAIOSFODNN7EXAMPLE",
@@ -292,6 +297,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 			},
 			currentEnv: map[string]string{
 				"CLAUDE_CODE_USE_BEDROCK": "1",
+				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1",
 				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
 				"AWS_ACCESS_KEY_ID":       "AKIAIOSFODNN7EXAMPLE",
@@ -355,6 +361,7 @@ func TestWorkerEnvVarsWithAuth(t *testing.T) {
 			model: "opus",
 			expected: map[string]string{
 				"CLAUDE_CODE_USE_BEDROCK":   "1",
+				"CLAUDE_PROVIDER":           "bedrock",
 				"AWS_REGION":                "us-west-2",
 				"ANTHROPIC_MODEL":           "us.anthropic.claude-opus-4-6-v1",
 			},
@@ -371,6 +378,7 @@ func TestWorkerEnvVarsWithAuth(t *testing.T) {
 			model: "sonnet",
 			expected: map[string]string{
 				"CLAUDE_CODE_USE_BEDROCK": "1",
+				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1",
 				"AWS_PROFILE":             "my-profile",
 				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
@@ -387,6 +395,7 @@ func TestWorkerEnvVarsWithAuth(t *testing.T) {
 			model: "sonnet",
 			expected: map[string]string{
 				"CLAUDE_CODE_USE_BEDROCK": "1",
+				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1", // default
 				"AWS_PROFILE":             "sso-profile",
 				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
