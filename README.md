@@ -374,6 +374,34 @@ reposwarm results audit
 
 ---
 
+### 🧠 Ask Architecture Questions (Askbox)
+
+Query your architecture docs with AI. The [askbox](https://github.com/reposwarm/reposwarm-askbox) agent reads `.arch.md` files from your arch-hub and reasons across repos.
+
+```bash
+# Quick Q&A about RepoSwarm usage
+reposwarm ask "how do I add a new repo?"
+
+# Architecture analysis via askbox (reads your .arch.md files)
+reposwarm ask --arch "how does auth work across all services?"
+
+# Scope to specific repos
+reposwarm ask --arch --repos my-api,billing "how do they communicate?"
+
+# Use Strands adapter instead of Claude Agent SDK
+reposwarm ask --arch --adapter strands "what databases are used?"
+
+# Agent-friendly: get ask-id immediately, poll separately
+reposwarm ask --arch --no-wait --json "what patterns do repos share?"
+```
+
+The `--arch` flag triggers the full askbox agent which:
+1. Clones your arch-hub repo
+2. Uses Claude Agent SDK (default) or Strands to explore `.arch.md` files
+3. Returns a detailed markdown analysis citing specific repos and sections
+
+---
+
 ### 🧹 Cleanup and Maintenance
 
 ```bash
@@ -532,6 +560,14 @@ reposwarm services --json | jq '.[] | {name, status, pid}'
 | `reposwarm results diff <repo1> <repo2>` | Compare investigations |
 | `reposwarm results report [repos...] -o f.md` | Consolidated report |
 
+### Architecture Queries (Askbox)
+
+| Command | Description |
+|---------|-------------|
+| `reposwarm ask <question>` | Quick Q&A about RepoSwarm usage |
+| `reposwarm ask --arch <question>` | Architecture analysis via askbox agent |
+| | `--repos` scope to repos, `--adapter` choose agent, `--no-wait` async |
+
 ### Prompts
 
 | Command | Description |
@@ -630,6 +666,18 @@ go build ./cmd/reposwarm   # Build
 ```
 
 CI: GitHub push → Go 1.24 tests → Cross-compile (darwin/linux × arm64/amd64) → GitHub Release
+
+## Ecosystem
+
+| Project | Docker Image |
+|---------|-------------|
+| [reposwarm](https://github.com/reposwarm/reposwarm) (worker) | `ghcr.io/reposwarm/worker:latest` |
+| [reposwarm-api](https://github.com/reposwarm/reposwarm-api) | `ghcr.io/reposwarm/api:latest` |
+| [reposwarm-ui](https://github.com/reposwarm/reposwarm-ui) | `ghcr.io/reposwarm/ui:latest` |
+| **reposwarm-cli** (this repo) | — (binary install) |
+| [reposwarm-askbox](https://github.com/reposwarm/reposwarm-askbox) | `ghcr.io/reposwarm/askbox:latest` |
+
+All Docker images are multi-arch (`linux/amd64` + `linux/arm64`), published automatically on every push to `main`.
 
 ## License
 
