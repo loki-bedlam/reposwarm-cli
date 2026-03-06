@@ -118,12 +118,13 @@ Examples:
 
 				if answer == "" || strings.ToLower(answer) == "y" || strings.ToLower(answer) == "yes" {
 					// Run provider setup inline (calls the same flow as 'config provider setup')
+					// NOTE: We call RunE directly instead of Execute() because cobra's Execute()
+					// re-parses os.Args from the root, picking up "new" as a subcommand of "provider".
 					providerCmd := newConfigProviderCmd()
 					// Find 'setup' subcommand
 					for _, sub := range providerCmd.Commands() {
 						if sub.Name() == "setup" {
-							sub.SetArgs([]string{})
-							if setupErr := sub.Execute(); setupErr != nil {
+							if setupErr := sub.RunE(sub, []string{}); setupErr != nil {
 								output.F.Warning(fmt.Sprintf("Provider setup had issues: %v", setupErr))
 								output.F.Info("You can configure later with: reposwarm config provider setup")
 							} else {
