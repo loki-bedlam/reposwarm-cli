@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/reposwarm/reposwarm-cli/internal/api"
+	"github.com/reposwarm/reposwarm-cli/internal/bootstrap"
+	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -76,23 +78,21 @@ func newServicesCmd() *cobra.Command {
 func newRestartCmd() *cobra.Command {
 	var wait bool
 	var timeout int
+	var local bool
 
 	cmd := &cobra.Command{
 		Use:   "restart [service]",
 		Short: "Restart one or all RepoSwarm services",
-		Long: `Restart a RepoSwarm service or all services.
+		Long: `Restart a RepoSwarm service or all services. Tries the API first,
+falls back to local process management if the API is unreachable.
 
 Examples:
   reposwarm restart           # Restart all services
   reposwarm restart worker    # Restart the worker
-  reposwarm restart api       # Restart the API server`,
+  reposwarm restart api       # Restart the API server
+  reposwarm restart --local   # Force local restart`,
 		Args: friendlyMaxArgs(1, "reposwarm restart [service]\n\nServices: api, worker, temporal, ui\n\nExample:\n  reposwarm restart worker"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient()
-			if err != nil {
-				return err
-			}
-
 			services := knownServices
 			if len(args) > 0 {
 				svc := args[0]
@@ -103,50 +103,74 @@ Examples:
 				services = []string{svc}
 			}
 
-			var results []map[string]any
-			for _, svc := range services {
-				var resp map[string]any
-				err := client.Post(ctx(), "/services/"+svc+"/restart", nil, &resp)
+			// Try API first
+			if !local {
+				client, err := getClient()
+				if err == nil {
+					apiWorked := true
+					var results []map[string]any
+					for _, svc := range services {
+						var resp map[string]any
+						err := client.Post(ctx(), "/services/"+svc+"/restart", nil, &resp)
 
-				result := map[string]any{"service": svc}
-				if err != nil {
-					result["status"] = "error"
-					result["error"] = err.Error()
-				} else {
-					result["status"] = resp["status"]
-					result["pid"] = resp["pid"]
-				}
-				results = append(results, result)
-
-				if !flagJSON {
-					if err != nil {
-						output.F.Printf("  %s %s: %v\n", output.Red("✗"), svc, err)
-					} else {
-						output.F.Printf("  %s %s restarted", output.Green("✓"), svc)
-						if pid, ok := resp["pid"]; ok && pid != nil && pid != float64(0) {
-							output.F.Printf(" (PID %.0f)", pid)
+						result := map[string]any{"service": svc}
+						if err != nil {
+							result["status"] = "error"
+							result["error"] = err.Error()
+							apiWorked = false
+						} else {
+							result["status"] = resp["status"]
+							result["pid"] = resp["pid"]
 						}
-						fmt.Println()
+						results = append(results, result)
+
+						if !flagJSON {
+							if err != nil {
+								output.F.Printf("  %s %s: %v\n", output.Red("✗"), svc, err)
+							} else {
+								output.F.Printf("  %s %s restarted", output.Green("✓"), svc)
+								if pid, ok := resp["pid"]; ok && pid != nil && pid != float64(0) {
+									output.F.Printf(" (PID %.0f)", pid)
+								}
+								fmt.Println()
+							}
+						}
 					}
+
+					if apiWorked {
+						if wait && !flagJSON {
+							output.F.Info("Waiting for healthy...")
+							deadline := time.Now().Add(time.Duration(timeout) * time.Second)
+							for time.Now().Before(deadline) {
+								_, err := client.Health(ctx())
+								if err == nil {
+									output.Successf("Services healthy")
+									break
+								}
+								time.Sleep(2 * time.Second)
+							}
+						}
+						if flagJSON {
+							return output.JSON(results)
+						}
+						return nil
+					}
+					// Some services failed via API — fall through to local
+					if !flagJSON {
+						output.F.Warning("Some services failed via API, falling back to local restart...")
+					}
+				} else if !flagJSON {
+					output.F.Warning("API unreachable, using local restart...")
 				}
 			}
 
-			if wait && !flagJSON {
-				// Wait for health
-				output.F.Info("Waiting for healthy...")
-				deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-				for time.Now().Before(deadline) {
-					_, err := client.Health(ctx())
-					if err == nil {
-						output.Successf("Services healthy")
-						break
+			// Local fallback
+			for _, svc := range services {
+				if err := restartLocal(svc); err != nil {
+					if !flagJSON {
+						output.F.Printf("  %s %s: %v\n", output.Red("✗"), svc, err)
 					}
-					time.Sleep(2 * time.Second)
 				}
-			}
-
-			if flagJSON {
-				return output.JSON(results)
 			}
 			return nil
 		},
@@ -154,54 +178,26 @@ Examples:
 
 	cmd.Flags().BoolVar(&wait, "wait", true, "Wait for service to be healthy after restart")
 	cmd.Flags().IntVar(&timeout, "timeout", 30, "Max seconds to wait for healthy")
-	return cmd
-}
-
-func newStopCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "stop [service]",
-		Short: "Stop a RepoSwarm service",
-		Args:  friendlyExactArgs(1, "reposwarm stop <service>\n\nServices: api, worker, temporal, ui\n\nExample:\n  reposwarm stop worker"),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			svc := args[0]
-			if !isKnownService(svc) {
-				return fmt.Errorf("unknown service: %s", svc)
-			}
-
-			client, err := getClient()
-			if err != nil {
-				return err
-			}
-
-			var resp map[string]any
-			if err := client.Post(ctx(), "/services/"+svc+"/stop", nil, &resp); err != nil {
-				return fmt.Errorf("failed to stop %s: %w", svc, err)
-			}
-
-			if flagJSON {
-				return output.JSON(resp)
-			}
-
-			status, _ := resp["status"].(string)
-			if status == "stopped" {
-				output.Successf("%s stopped", svc)
-			} else if status == "not_found" {
-				output.F.Info(fmt.Sprintf("%s is not running", svc))
-			} else {
-				output.F.Error(fmt.Sprintf("Unexpected status: %s", status))
-			}
-			return nil
-		},
-	}
+	cmd.Flags().BoolVar(&local, "local", false, "Force local restart (skip API)")
 	return cmd
 }
 
 func newStartCmd() *cobra.Command {
 	var wait bool
+	var local bool
 
 	cmd := &cobra.Command{
 		Use:   "start [service]",
 		Short: "Start a RepoSwarm service",
+		Long: `Start a RepoSwarm service. Tries the API first, falls back to local
+process management if the API is unreachable (e.g. when starting the API itself).
+
+Use --local to force local mode (skip API, spawn process directly).
+
+Examples:
+  reposwarm start api           # Start the API (uses local fallback automatically)
+  reposwarm start worker        # Start the worker
+  reposwarm start --local api   # Force local start (skip API call)`,
 		Args:  friendlyExactArgs(1, "reposwarm start <service>\n\nServices: api, worker, temporal, ui\n\nExample:\n  reposwarm start worker"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc := args[0]
@@ -209,40 +205,210 @@ func newStartCmd() *cobra.Command {
 				return fmt.Errorf("unknown service: %s", svc)
 			}
 
-			client, err := getClient()
-			if err != nil {
-				return err
-			}
-
-			var resp map[string]any
-			if err := client.Post(ctx(), "/services/"+svc+"/start", nil, &resp); err != nil {
-				return fmt.Errorf("failed to start %s: %w", svc, err)
-			}
-
-			if flagJSON {
-				return output.JSON(resp)
-			}
-
-			output.Successf("%s started", svc)
-			if wait {
-				output.F.Info("Waiting for healthy...")
-				deadline := time.Now().Add(30 * time.Second)
-				for time.Now().Before(deadline) {
-					health, err := client.Health(ctx())
-					if err == nil && health.Worker.Connected {
-						output.Successf("%s healthy", svc)
+			// Try API first (unless --local or starting the API itself)
+			if !local && svc != "api" {
+				client, err := getClient()
+				if err == nil {
+					var resp map[string]any
+					if err := client.Post(ctx(), "/services/"+svc+"/start", nil, &resp); err == nil {
+						if flagJSON {
+							return output.JSON(resp)
+						}
+						output.Successf("%s started (via API)", svc)
+						if wait {
+							return waitForHealthy(client, svc, 30)
+						}
 						return nil
 					}
-					time.Sleep(2 * time.Second)
+					// API call failed — fall through to local
+					if !flagJSON {
+						output.F.Warning(fmt.Sprintf("API call failed, falling back to local start..."))
+					}
 				}
-				output.F.Warning("Health check timed out")
 			}
-			return nil
+
+			// Local fallback: start the process directly
+			return startLocal(svc, wait)
 		},
 	}
 
 	cmd.Flags().BoolVar(&wait, "wait", true, "Wait for service to be healthy")
+	cmd.Flags().BoolVar(&local, "local", false, "Force local start (skip API, spawn process directly)")
 	return cmd
+}
+
+func newStopCmd() *cobra.Command {
+	var local bool
+
+	cmd := &cobra.Command{
+		Use:   "stop [service]",
+		Short: "Stop a RepoSwarm service",
+		Long: `Stop a RepoSwarm service. Tries the API first, falls back to local
+process management if the API is unreachable.
+
+Examples:
+  reposwarm stop worker
+  reposwarm stop --local api    # Force local stop`,
+		Args:  friendlyExactArgs(1, "reposwarm stop <service>\n\nServices: api, worker, temporal, ui\n\nExample:\n  reposwarm stop worker"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			svc := args[0]
+			if !isKnownService(svc) {
+				return fmt.Errorf("unknown service: %s", svc)
+			}
+
+			// Try API first (unless --local or stopping the API itself)
+			if !local && svc != "api" {
+				client, err := getClient()
+				if err == nil {
+					var resp map[string]any
+					if err := client.Post(ctx(), "/services/"+svc+"/stop", nil, &resp); err == nil {
+						if flagJSON {
+							return output.JSON(resp)
+						}
+						status, _ := resp["status"].(string)
+						if status == "stopped" {
+							output.Successf("%s stopped", svc)
+						} else if status == "not_found" {
+							output.F.Info(fmt.Sprintf("%s is not running", svc))
+						} else {
+							output.F.Error(fmt.Sprintf("Unexpected status: %s", status))
+						}
+						return nil
+					}
+					if !flagJSON {
+						output.F.Warning("API call failed, falling back to local stop...")
+					}
+				}
+			}
+
+			// Local fallback
+			return stopLocal(svc)
+		},
+	}
+
+	cmd.Flags().BoolVar(&local, "local", false, "Force local stop (skip API, use PID files)")
+	return cmd
+}
+
+// startLocal starts a service by spawning the process directly.
+func startLocal(svc string, wait bool) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	installDir := cfg.EffectiveInstallDir()
+
+	if !bootstrap.IsLocalInstall(installDir) {
+		return fmt.Errorf("no local installation found at %s\nRun 'reposwarm new --local' to set up, or check your installDir config", installDir)
+	}
+
+	bsCfg := toBsConfig(cfg)
+
+	if !flagJSON {
+		output.F.Info(fmt.Sprintf("Starting %s locally from %s...", svc, installDir))
+	}
+
+	if err := bootstrap.LocalStart(installDir, svc, bsCfg); err != nil {
+		return err
+	}
+
+	if flagJSON {
+		return output.JSON(map[string]any{"service": svc, "status": "started", "mode": "local"})
+	}
+
+	output.Successf("%s started (local)", svc)
+
+	if wait && svc == "api" {
+		output.F.Info("Waiting for API to be healthy...")
+		if err := waitForLocalHealth(fmt.Sprintf("http://localhost:%s/v1/health", bsCfg.APIPort), 30); err != nil {
+			output.F.Warning("API not responding after 30s — check api/api.log")
+		} else {
+			output.Successf("API is healthy")
+		}
+	}
+	return nil
+}
+
+// stopLocal stops a service using PID files.
+func stopLocal(svc string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	installDir := cfg.EffectiveInstallDir()
+
+	bsCfg := toBsConfig(cfg)
+	if err := bootstrap.LocalStop(installDir, svc, bsCfg); err != nil {
+		return err
+	}
+
+	if flagJSON {
+		return output.JSON(map[string]any{"service": svc, "status": "stopped", "mode": "local"})
+	}
+	output.Successf("%s stopped (local)", svc)
+	return nil
+}
+
+// restartLocal restarts a service locally.
+func restartLocal(svc string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	installDir := cfg.EffectiveInstallDir()
+
+	if !bootstrap.IsLocalInstall(installDir) {
+		return fmt.Errorf("no local installation found at %s", installDir)
+	}
+
+	bsCfg := toBsConfig(cfg)
+	if err := bootstrap.LocalRestart(installDir, svc, bsCfg); err != nil {
+		return err
+	}
+
+	if !flagJSON {
+		output.Successf("%s restarted (local)", svc)
+	}
+	return nil
+}
+
+func toBsConfig(cfg *config.Config) *bootstrap.Config {
+	return &bootstrap.Config{
+		APIPort:        cfg.EffectiveAPIPort(),
+		UIPort:         cfg.EffectiveUIPort(),
+		TemporalPort:   cfg.EffectiveTemporalPort(),
+		TemporalUIPort: cfg.EffectiveTemporalUIPort(),
+		DynamoDBTable:  cfg.EffectiveDynamoDBTable(),
+		DefaultModel:   cfg.EffectiveModel(),
+		Region:         cfg.Region,
+	}
+}
+
+func waitForLocalHealth(url string, timeoutSec int) error {
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	for time.Now().Before(deadline) {
+		_, err := (&api.Client{}).Health(ctx())
+		if err == nil {
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("timeout")
+}
+
+func waitForHealthy(client *api.Client, svc string, timeoutSec int) error {
+	output.F.Info("Waiting for healthy...")
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	for time.Now().Before(deadline) {
+		health, err := client.Health(ctx())
+		if err == nil && (svc != "worker" || health.Worker.Connected) {
+			output.Successf("%s healthy", svc)
+			return nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+	output.F.Warning("Health check timed out")
+	return nil
 }
 
 func isKnownService(name string) bool {
