@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -27,11 +28,24 @@ With --arch:    queries your architecture docs using the askbox agent (slower, t
 The askbox reads your .arch.md files and reasons across repos to answer
 complex architecture questions.
 
+Flags:
+  --arch              Use the askbox agent for architecture analysis
+  --repos <list>      Comma-separated repos to scope the question to
+  --adapter <name>    Agent adapter: claude-agent-sdk (default) or strands
+  --no-wait           Return ask-id immediately without waiting for answer
+
+Output modes:
+  (default)           Human-friendly with progress indicators
+  --for-agent         Plain text answer only, no formatting
+  --json              Structured JSON output
+
 Examples:
   reposwarm ask "how do I add a new repo?"
   reposwarm ask --arch "how does auth work across all services?"
   reposwarm ask --arch --repos my-api,billing "how do they communicate?"
-  reposwarm ask --arch --adapter strands "what databases are used?"`,
+  reposwarm ask --arch --adapter strands "what databases are used?"
+  reposwarm ask --arch --no-wait --json "what patterns do repos share?"
+  reposwarm ask --arch --for-agent "summarize the test strategies"`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			question := strings.Join(args, " ")
@@ -73,6 +87,9 @@ func runSimpleAsk(client *api.Client, question string) error {
 
 	err := client.Post(ctx(), "/ask", map[string]string{"question": question}, &resp)
 	if err != nil {
+		if flagJSON {
+			return output.JSON(map[string]any{"success": false, "error": err.Error()})
+		}
 		return fmt.Errorf("ask failed: %w", err)
 	}
 
@@ -140,24 +157,45 @@ func runArchAsk(client *api.Client, question, repos, adapter string, noWait bool
 
 	err := client.Post(ctx(), "/ask/arch", body, &submitResp)
 	if err != nil {
+		if flagJSON {
+			return output.JSON(map[string]any{"success": false, "error": err.Error()})
+		}
 		return fmt.Errorf("ask failed: %w", err)
 	}
 
 	if !submitResp.Success {
+		if flagJSON {
+			return output.JSON(map[string]any{"success": false, "error": submitResp.Error})
+		}
 		return fmt.Errorf("ask failed: %s", submitResp.Error)
 	}
 
 	askID := submitResp.AskID
 
-	if noWait || flagJSON && noWait {
-		return output.JSON(map[string]any{
-			"askId":  askID,
-			"status": "pending",
-		})
+	// --no-wait: return immediately with the ask-id
+	if noWait {
+		if flagJSON {
+			return output.JSON(map[string]any{
+				"success": true,
+				"askId":   askID,
+				"status":  "pending",
+			})
+		}
+		// --for-agent: plain text ask-id
+		if flagAgent {
+			fmt.Printf("ask-id: %s\nstatus: pending\n", askID)
+			return nil
+		}
+		fmt.Printf("  %s Submitted — ask-id: %s (use reposwarm ask status %s to check)\n",
+			output.Green("✓"), askID, askID)
+		return nil
 	}
 
 	if !flagJSON && !flagAgent {
 		fmt.Printf("\r\033[K  %s Submitted — ask-id: %s\n", output.Green("✓"), askID)
+	}
+	if flagAgent {
+		fmt.Fprintf(os.Stderr, "ask-id: %s\nstatus: polling\n", askID)
 	}
 
 	// Poll for completion
@@ -175,6 +213,13 @@ func runArchAsk(client *api.Client, question, repos, adapter string, noWait bool
 
 		err := client.Get(ctx(), fmt.Sprintf("/ask/arch/%s", askID), &pollResp)
 		if err != nil {
+			if flagJSON {
+				return output.JSON(map[string]any{
+					"success": false,
+					"askId":   askID,
+					"error":   err.Error(),
+				})
+			}
 			return fmt.Errorf("polling failed: %w", err)
 		}
 
@@ -197,6 +242,14 @@ func runArchAsk(client *api.Client, question, repos, adapter string, noWait bool
 			return nil
 
 		case "failed":
+			if flagJSON {
+				return output.JSON(map[string]any{
+					"success": false,
+					"askId":   askID,
+					"status":  "failed",
+					"error":   pollResp.Error,
+				})
+			}
 			return fmt.Errorf("ask failed: %s", pollResp.Error)
 
 		default:
