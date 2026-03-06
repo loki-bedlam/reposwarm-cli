@@ -99,7 +99,7 @@ Start with `nohup npm start > {installDir}/api/api.log 2>&1 &`
 ### 5. Clone and start Worker
 ```bash
 cd {installDir}
-git clone https://github.com/royosherove/repo-swarm.git worker
+git clone https://github.com/reposwarm/reposwarm.git worker
 cd worker
 python3 -m venv .venv
 source .venv/bin/activate
