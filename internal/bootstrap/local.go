@@ -620,9 +620,36 @@ func TemporalComposeLocal() string {
     volumes:
       - dynamodb-data:/home/dynamodblocal/data
 
+  askbox:
+    image: ghcr.io/reposwarm/askbox:latest
+    build:
+      context: ../askbox
+      dockerfile: Dockerfile
+    environment:
+      - ASKBOX_ADAPTER=${ASKBOX_ADAPTER:-claude-agent-sdk}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-}
+      - AWS_REGION=${AWS_REGION:-}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_PROFILE=${AWS_PROFILE:-}
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:-}
+      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
+      - LITELLM_API_URL=${LITELLM_API_URL:-}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
+      - MODEL_ID=${MODEL_ID:-}
+    volumes:
+      - askbox-output:/output
+      - askbox-arch-hub:/tmp/arch-hub
+    profiles:
+      - ask
+
 volumes:
   temporal-data:
   dynamodb-data:
+  askbox-output:
+  askbox-arch-hub:
 `
 }
 
