@@ -67,6 +67,13 @@ Examples:
 			question := strings.Join(args, " ")
 
 			if archFlag {
+				// Deprecation notice
+				if !flagJSON && !flagAgent {
+					fmt.Fprintf(os.Stderr, "💡 Tip: Architecture queries are moving to the standalone `ask` CLI.\n")
+					fmt.Fprintf(os.Stderr, "   Install: go install github.com/reposwarm/ask/cmd/ask@latest\n")
+					fmt.Fprintf(os.Stderr, "   Usage:   ask %q\n\n", question)
+				}
+
 				// For arch questions, try local askbox server first (fast path)
 				if localFlag {
 					return runLocalArchAsk(question, hubURLFlag, reposFlag, adapterFlag, modelFlag)
