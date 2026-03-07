@@ -116,8 +116,8 @@ If no service is specified, shows logs from all services.`,
 		},
 	}
 
-	cmd.Flags().BoolVarP(&tail, "tail", "f", false, "Follow/stream logs")
-	cmd.Flags().IntVarP(&lines, "lines", "n", 50, "Number of lines to show")
+	cmd.Flags().BoolVarP(&tail, "follow", "f", false, "Follow/stream logs")
+	cmd.Flags().IntVarP(&lines, "tail", "n", 50, "Number of lines to show from end of logs")
 	return cmd
 }
 
