@@ -658,7 +658,7 @@ services:
     image: amazon/dynamodb-local:latest
     ports:
       - "8000:8000"
-    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb"]
     volumes:
       - dynamodb-data:/home/dynamodblocal/data
 
