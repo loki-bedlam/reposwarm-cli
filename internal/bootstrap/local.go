@@ -655,7 +655,7 @@ services:
 
   dynamodb-local:
     container_name: reposwarm-dynamodb
-    image: amazon/dynamodb-local:2.5.3
+    image: amazon/dynamodb-local:latest
     ports:
       - "8000:8000"
     command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/home/dynamodblocal/data"]
@@ -665,15 +665,16 @@ services:
   api:
     container_name: reposwarm-api
     image: ghcr.io/reposwarm/api:latest
-    network_mode: host
+    ports:
+      - "${API_PORT:-3000}:3000"
     environment:
       - PORT=3000
       - API_BEARER_TOKEN=${API_BEARER_TOKEN}
-      - TEMPORAL_SERVER_URL=localhost:7233
-      - TEMPORAL_HTTP_URL=http://localhost:8080
+      - TEMPORAL_SERVER_URL=temporal:7233
+      - TEMPORAL_HTTP_URL=http://temporal-ui:8080
       - TEMPORAL_NAMESPACE=default
       - AWS_REGION=${AWS_REGION:-us-east-1}
-      - DYNAMODB_ENDPOINT=http://localhost:8000
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
       - DYNAMODB_TABLE=${DYNAMODB_TABLE:-reposwarm-cache}
       - REPOSWARM_INSTALL_DIR=/data
     volumes:
