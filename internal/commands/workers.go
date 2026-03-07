@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/reposwarm/reposwarm-cli/internal/api"
+	"github.com/reposwarm/reposwarm-cli/internal/bootstrap"
+	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -35,6 +37,60 @@ func newWorkersListCmd() *cobra.Command {
 			var resp api.WorkersResponse
 			if err := client.Get(ctx(), "/workers", &resp); err != nil {
 				return fmt.Errorf("failed to list workers: %w", err)
+			}
+
+			// For Docker installs, overlay real container status
+			cfg, _ := config.Load()
+			if cfg != nil {
+				installDir := cfg.EffectiveInstallDir()
+				if bootstrap.IsDockerInstall(installDir) {
+					dockerServices, _ := bootstrap.DockerComposeServices(installDir)
+					for i, w := range resp.Workers {
+						for _, ds := range dockerServices {
+							if ds.Service == "worker" {
+								if ds.State == "running" {
+									resp.Workers[i].Status = "healthy"
+									if ds.Health == "healthy" {
+										resp.Workers[i].Status = "healthy"
+									} else if ds.Health == "unhealthy" {
+										resp.Workers[i].Status = "degraded"
+									}
+								}
+								resp.Workers[i].Host = ds.Name
+								_ = w // suppress unused
+								break
+							}
+						}
+					}
+					// Also fix env errors using worker.env file
+					workerEnv, _ := bootstrap.ReadWorkerEnvFile(installDir)
+					if workerEnv != nil {
+						for i := range resp.Workers {
+							var remaining []string
+							for _, e := range resp.Workers[i].EnvErrors {
+								// Check if the "missing" env var is actually in worker.env
+								found := false
+								for k := range workerEnv {
+									if strings.Contains(e, k) {
+										found = true
+										break
+									}
+								}
+								if !found {
+									remaining = append(remaining, e)
+								}
+							}
+							resp.Workers[i].EnvErrors = remaining
+						}
+					}
+					// Recount healthy
+					resp.Healthy = 0
+					for _, w := range resp.Workers {
+						if w.Status == "healthy" {
+							resp.Healthy++
+						}
+					}
+				}
 			}
 
 			if flagJSON {
@@ -130,6 +186,22 @@ func newWorkersShowCmd() *cobra.Command {
 				return output.JSON(result)
 			}
 
+			// For Docker installs, overlay real container status
+			cfg, _ := config.Load()
+			if cfg != nil && bootstrap.IsDockerInstall(cfg.EffectiveInstallDir()) {
+				dockerServices, _ := bootstrap.DockerComposeServices(cfg.EffectiveInstallDir())
+				for _, ds := range dockerServices {
+					if ds.Service == "worker" && ds.State == "running" {
+						worker.Status = "healthy"
+						if ds.Health == "unhealthy" {
+							worker.Status = "degraded"
+						}
+						worker.Host = ds.Name
+						break
+					}
+				}
+			}
+
 			F := output.F
 			F.Section(fmt.Sprintf("Worker: %s", worker.Name))
 			F.KeyValue("Status", formatWorkerStatus(worker.Status))
@@ -145,9 +217,50 @@ func newWorkersShowCmd() *cobra.Command {
 				F.KeyValue("Model", worker.Model)
 			}
 
-			// Environment from API
+			// Environment — prefer Docker container env or worker.env for Docker installs
 			F.Println()
 			F.Section("Environment")
+			isDocker := cfg != nil && bootstrap.IsDockerInstall(cfg.EffectiveInstallDir())
+
+			if isDocker {
+				// Read actual env from worker.env + container
+				workerEnv, _ := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir())
+				containerEnv, _ := bootstrap.DockerServiceEnv(cfg.EffectiveInstallDir(), "worker")
+				// Merge: container env overrides worker.env
+				merged := make(map[string]string)
+				for k, v := range workerEnv {
+					merged[k] = v
+				}
+				for k, v := range containerEnv {
+					merged[k] = v
+				}
+
+				importantVars := []string{
+					"CLAUDE_CODE_USE_BEDROCK", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL",
+					"AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_BEARER_TOKEN_BEDROCK",
+					"GITHUB_TOKEN", "TEMPORAL_SERVER_URL", "DYNAMODB_ENDPOINT",
+				}
+				for _, key := range importantVars {
+					val, ok := merged[key]
+					if ok && val != "" {
+						source := "worker.env"
+						if _, inContainer := containerEnv[key]; inContainer {
+							source = "container"
+						}
+						F.Printf("  %s %s: set (%s)\n", output.Green("[OK]"), key, source)
+					} else {
+						// Only flag as FAIL for critical vars
+						if key == "ANTHROPIC_API_KEY" || key == "GITHUB_TOKEN" || key == "AWS_ACCESS_KEY_ID" || key == "AWS_BEARER_TOKEN_BEDROCK" {
+							// These are optional depending on auth method
+							F.Printf("  %s %s: not set\n", output.Dim("[—]"), key)
+						} else if key == "CLAUDE_CODE_USE_BEDROCK" || key == "ANTHROPIC_MODEL" {
+							F.Printf("  %s %s: NOT SET\n", output.Red("[FAIL]"), key)
+						} else {
+							F.Printf("  %s %s: set (default)\n", output.Green("[OK]"), key)
+						}
+					}
+				}
+			} else {
 			var envResp struct {
 				Entries []struct {
 					Key    string `json:"key"`
@@ -168,6 +281,7 @@ func newWorkersShowCmd() *cobra.Command {
 					}
 				}
 			}
+			} // end else (non-Docker)
 
 			// Logs from API
 			if !noLogs {

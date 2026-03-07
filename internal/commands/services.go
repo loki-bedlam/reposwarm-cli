@@ -42,6 +42,15 @@ func newServicesCmd() *cobra.Command {
 		Use:   "services",
 		Short: "Show all running RepoSwarm services",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Check if this is a Docker install — use docker compose ps directly
+			cfg, _ := config.Load()
+			if cfg != nil {
+				installDir := cfg.EffectiveInstallDir()
+				if bootstrap.IsDockerInstall(installDir) {
+					return showDockerServices(installDir)
+				}
+			}
+
 			client, err := getClient()
 			if err != nil {
 				return err
@@ -98,6 +107,56 @@ func newServicesCmd() *cobra.Command {
 	return cmd
 }
 
+func showDockerServices(installDir string) error {
+	services, err := bootstrap.DockerComposeServices(installDir)
+	if err != nil {
+		return fmt.Errorf("failed to list Docker services: %w", err)
+	}
+
+	if flagJSON {
+		return output.JSON(services)
+	}
+
+	F := output.F
+	running := 0
+	for _, s := range services {
+		if s.State == "running" {
+			running++
+		}
+	}
+	F.Section(fmt.Sprintf("Services (%d/%d running) — Docker Compose", running, len(services)))
+
+	headers := []string{"Service", "Container", "Status", "Health", "Ports"}
+	var rows [][]string
+	for _, s := range services {
+		stateStr := s.State
+		switch s.State {
+		case "running":
+			stateStr = output.Green("running")
+		case "exited":
+			stateStr = output.Red("exited")
+		case "restarting":
+			stateStr = output.Yellow("restarting")
+		}
+		health := s.Health
+		if health == "" {
+			health = "—"
+		} else if health == "healthy" {
+			health = output.Green("healthy")
+		} else if health == "unhealthy" {
+			health = output.Red("unhealthy")
+		}
+		ports := s.Ports
+		if ports == "" {
+			ports = "—"
+		}
+		rows = append(rows, []string{s.Service, s.Name, stateStr, health, ports})
+	}
+
+	output.Table(headers, rows)
+	F.Println()
+	return nil
+}
 func newRestartCmd() *cobra.Command {
 	var wait bool
 	var timeout int

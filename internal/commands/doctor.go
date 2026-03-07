@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/reposwarm/reposwarm-cli/internal/api"
+	"github.com/reposwarm/reposwarm-cli/internal/bootstrap"
 	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -655,23 +656,43 @@ func checkWorkerEnv() []checkResult {
 		output.F.Section("Worker Environment")
 	}
 
-	// Fetch worker env from API
-	var envResp struct {
-		Entries []struct {
-			Key    string `json:"key"`
-			Set    bool   `json:"set"`
-		} `json:"entries"`
-	}
-	if err := client.Get(ctx(), "/workers/worker-1/env", &envResp); err != nil {
-		// API doesn't support /workers endpoint yet — skip silently
-		return results
+	// Fetch worker env — use worker.env file for Docker installs, API for source installs
+	cfg, cfgErr := config.Load()
+	isDockerEnv := cfgErr == nil && bootstrap.IsDockerInstall(cfg.EffectiveInstallDir())
+
+	envSet := make(map[string]bool)
+	if isDockerEnv {
+		workerEnv, _ := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir())
+		containerEnv, _ := bootstrap.DockerServiceEnv(cfg.EffectiveInstallDir(), "worker")
+		for k, v := range workerEnv {
+			if v != "" {
+				envSet[k] = true
+			}
+		}
+		for k, v := range containerEnv {
+			if v != "" {
+				envSet[k] = true
+			}
+		}
+	} else {
+		var envResp struct {
+			Entries []struct {
+				Key string `json:"key"`
+				Set bool   `json:"set"`
+			} `json:"entries"`
+		}
+		if err := client.Get(ctx(), "/workers/worker-1/env", &envResp); err != nil {
+			return results
+		}
+		for _, entry := range envResp.Entries {
+			envSet[entry.Key] = entry.Set
+		}
 	}
 
 	required := map[string]string{}
 	optional := map[string]string{}
 
 	// All env var requirements come from providers.json — single source of truth
-	cfg, cfgErr := config.Load()
 	if cfgErr == nil {
 		for _, req := range config.RequiredEnvVarsWithGit(&cfg.ProviderConfig, cfg.GitProvider) {
 			if req.Required {
@@ -682,46 +703,41 @@ func checkWorkerEnv() []checkResult {
 		}
 	}
 
-	for _, entry := range envResp.Entries {
-		desc, isRequired := required[entry.Key]
-		if !isRequired {
-			continue
-		}
-		if entry.Set {
-			c := checkResult{entry.Key, "ok", "set"}
+	for key, desc := range required {
+		if envSet[key] {
+			c := checkResult{key, "ok", "set"}
 			printCheck(c)
 			results = append(results, c)
 		} else {
-			c := checkResult{entry.Key, "fail", fmt.Sprintf("NOT SET — %s", desc)}
+			c := checkResult{key, "fail", fmt.Sprintf("NOT SET — %s", desc)}
 			printCheck(c)
 			results = append(results, c)
 			if !flagJSON {
-				fmt.Printf("     Set it: %s\n", output.Cyan(fmt.Sprintf("reposwarm config worker-env set %s <value>", entry.Key)))
+				fmt.Printf("     Set it: %s\n", output.Cyan(fmt.Sprintf("reposwarm config worker-env set %s <value>", key)))
 			}
 		}
 	}
 
 	// Check optional env vars (warn, not fail)
-	for _, entry := range envResp.Entries {
-		desc, isOptional := optional[entry.Key]
-		if !isOptional {
-			continue
-		}
-		if entry.Set {
-			c := checkResult{entry.Key, "ok", "set"}
+	for key, desc := range optional {
+		if envSet[key] {
+			c := checkResult{key, "ok", "set"}
 			printCheck(c)
 			results = append(results, c)
 		} else {
-			c := checkResult{entry.Key, "warn", fmt.Sprintf("not set — %s", desc)}
+			c := checkResult{key, "warn", fmt.Sprintf("not set — %s", desc)}
 			printCheck(c)
 			results = append(results, c)
 		}
 	}
 
-	// Check for required/optional vars NOT returned by the API (e.g. git provider vars)
-	checked := map[string]bool{}
-	for _, entry := range envResp.Entries {
-		checked[entry.Key] = true
+	// Check for required/optional vars NOT yet checked (e.g. git provider vars)
+	checked := make(map[string]bool)
+	for k := range required {
+		checked[k] = true
+	}
+	for k := range optional {
+		checked[k] = true
 	}
 
 	gitTokenKeys := map[string]bool{
@@ -729,30 +745,35 @@ func checkWorkerEnv() []checkResult {
 		"BITBUCKET_APP_PASSWORD": true, "BITBUCKET_USERNAME": true,
 	}
 
-	for key, desc := range required {
-		if checked[key] {
-			continue
-		}
-		// Not in API response — treat as not set
-		c := checkResult{key, "fail", fmt.Sprintf("NOT SET — %s", desc)}
-		printCheck(c)
-		results = append(results, c)
-		if !flagJSON {
-			if gitTokenKeys[key] {
-				fmt.Printf("     Configure: %s\n", output.Cyan("reposwarm config git setup"))
+	// Check any env vars from the config that weren't in required/optional
+	if cfgErr == nil {
+		for _, req := range config.RequiredEnvVarsWithGit(&cfg.ProviderConfig, cfg.GitProvider) {
+			if checked[req.Key] {
+				continue
+			}
+			if envSet[req.Key] {
+				c := checkResult{req.Key, "ok", "set"}
+				printCheck(c)
+				results = append(results, c)
+			} else if req.Required {
+				c := checkResult{req.Key, "fail", fmt.Sprintf("NOT SET — %s", req.Desc)}
+				printCheck(c)
+				results = append(results, c)
+				if !flagJSON {
+					if gitTokenKeys[req.Key] {
+						fmt.Printf("     Configure: %s\n", output.Cyan("reposwarm config git setup"))
+					} else {
+						fmt.Printf("     Set it: %s\n", output.Cyan(fmt.Sprintf("reposwarm config worker-env set %s <value>", req.Key)))
+					}
+				}
 			} else {
-				fmt.Printf("     Set it: %s\n", output.Cyan(fmt.Sprintf("reposwarm config worker-env set %s <value>", key)))
+				if !envSet[req.Key] {
+					c := checkResult{req.Key, "warn", fmt.Sprintf("not set — %s", req.Desc)}
+					printCheck(c)
+					results = append(results, c)
+				}
 			}
 		}
-	}
-
-	for key, desc := range optional {
-		if checked[key] {
-			continue
-		}
-		c := checkResult{key, "warn", fmt.Sprintf("not set — %s", desc)}
-		printCheck(c)
-		results = append(results, c)
 	}
 
 	return results
