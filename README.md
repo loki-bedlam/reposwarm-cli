@@ -347,7 +347,7 @@ reposwarm workers list
 # Deep-dive on a specific worker
 reposwarm workers show worker-1
 
-# See all services (PID, port, status)
+# See all services (Docker containers or processes)
 reposwarm services
 ```
 
@@ -644,7 +644,7 @@ Set via `reposwarm config set <key> <value>`:
 | `region` | `us-east-1` | AWS region |
 | `defaultModel` | `us.anthropic.claude-sonnet-4-6` | Default LLM model |
 | `chunkSize` | `10` | Files per investigation chunk |
-| `installDir` | `~/reposwarm` | Local installation directory |
+| `installDir` | `~/.reposwarm` | Local installation directory |
 | `temporalPort` | `7233` | Temporal gRPC port |
 | `temporalUiPort` | `8233` | Temporal UI port |
 | `apiPort` | `3000` | API server port |
