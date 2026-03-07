@@ -2,7 +2,13 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
+	"github.com/reposwarm/reposwarm-cli/internal/bootstrap"
+	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -19,6 +25,20 @@ func newConfigWorkerEnvCmd() *cobra.Command {
 	return cmd
 }
 
+// workerEnvFilePath returns the path to the worker.env file, or empty string if not found.
+func workerEnvFilePath() string {
+	cfg, err := config.Load()
+	if err != nil {
+		return ""
+	}
+	installDir := cfg.EffectiveInstallDir()
+	p := filepath.Join(installDir, bootstrap.ComposeSubDir, "worker.env")
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+	return ""
+}
+
 func newWorkerEnvListCmd() *cobra.Command {
 	var reveal bool
 
@@ -26,46 +46,94 @@ func newWorkerEnvListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "Show all worker environment variables",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := getClient()
+			// Try API first
+			client, clientErr := getClient()
+			if clientErr == nil {
+				path := "/workers/worker-1/env"
+				if reveal {
+					path += "?reveal=true"
+				}
+
+				var resp struct {
+					EnvFile string `json:"envFile"`
+					Entries []struct {
+						Key    string `json:"key"`
+						Value  string `json:"value"`
+						Source string `json:"source"`
+						Set    bool   `json:"set"`
+					} `json:"entries"`
+				}
+				if err := client.Get(ctx(), path, &resp); err == nil {
+					if flagJSON {
+						return output.JSON(resp)
+					}
+
+					F := output.F
+					F.Section("Worker Environment")
+					F.KeyValue("Env file", resp.EnvFile)
+					F.Println()
+
+					headers := []string{"Variable", "Value", "Source"}
+					var rows [][]string
+					for _, e := range resp.Entries {
+						valStr := e.Value
+						if !e.Set {
+							valStr = output.Dim("(not set)")
+						}
+						rows = append(rows, []string{e.Key, valStr, e.Source})
+					}
+					output.Table(headers, rows)
+					F.Println()
+					return nil
+				}
+			}
+
+			// Fallback: read worker.env file directly
+			envPath := workerEnvFilePath()
+			if envPath == "" {
+				return fmt.Errorf("API unreachable and no worker.env file found.\nSet up locally: reposwarm new --local")
+			}
+
+			cfg, _ := config.Load()
+			envVars, err := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir())
 			if err != nil {
-				return err
-			}
-
-			path := "/workers/worker-1/env"
-			if reveal {
-				path += "?reveal=true"
-			}
-
-			var resp struct {
-				EnvFile string `json:"envFile"`
-				Entries []struct {
-					Key    string `json:"key"`
-					Value  string `json:"value"`
-					Source string `json:"source"`
-					Set    bool   `json:"set"`
-				} `json:"entries"`
-			}
-			if err := client.Get(ctx(), path, &resp); err != nil {
-				return fmt.Errorf("failed to list worker env: %w", err)
+				return fmt.Errorf("reading worker.env: %w", err)
 			}
 
 			if flagJSON {
-				return output.JSON(resp)
+				entries := []map[string]any{}
+				for k, v := range envVars {
+					val := v
+					if !reveal {
+						val = config.MaskedToken(v)
+					}
+					entries = append(entries, map[string]any{"key": k, "value": val, "set": true, "source": "file"})
+				}
+				return output.JSON(map[string]any{"envFile": envPath, "entries": entries, "source": "file"})
 			}
 
+			if !flagJSON {
+				output.F.Warning("API unreachable — reading from local file")
+			}
 			F := output.F
-			F.Section("Worker Environment")
-			F.KeyValue("Env file", resp.EnvFile)
+			F.Section("Worker Environment (from file)")
+			F.KeyValue("Env file", envPath)
 			F.Println()
+
+			keys := make([]string, 0, len(envVars))
+			for k := range envVars {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
 
 			headers := []string{"Variable", "Value", "Source"}
 			var rows [][]string
-			for _, e := range resp.Entries {
-				valStr := e.Value
-				if !e.Set {
-					valStr = output.Dim("(not set)")
+			for _, k := range keys {
+				v := envVars[k]
+				if !reveal {
+					v = config.MaskedToken(v)
 				}
-				rows = append(rows, []string{e.Key, valStr, e.Source})
+				rows = append(rows, []string{k, v, "file"})
 			}
 			output.Table(headers, rows)
 			F.Println()
@@ -86,44 +154,72 @@ func newWorkerEnvSetCmd() *cobra.Command {
 		Args:  friendlyExactArgs(2, "reposwarm config worker-env set <KEY> <VALUE>\n\nExample:\n  reposwarm config worker-env set ANTHROPIC_API_KEY sk-ant-abc123"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key, value := args[0], args[1]
-			client, err := getClient()
-			if err != nil {
-				return err
+
+			// Try API first
+			client, clientErr := getClient()
+			if clientErr == nil {
+				body := map[string]string{"value": value}
+				var resp struct {
+					Key     string `json:"key"`
+					Value   string `json:"value"`
+					EnvFile string `json:"envFile"`
+				}
+				if err := client.Put(ctx(), "/workers/worker-1/env/"+key, body, &resp); err == nil {
+					if flagJSON {
+						return output.JSON(map[string]any{
+							"key": resp.Key, "value": resp.Value,
+							"envFile": resp.EnvFile, "restart": restart,
+						})
+					}
+					output.Successf("Set %s = %s (written to %s)", key, resp.Value, resp.EnvFile)
+
+					if restart {
+						output.F.Info("Restarting worker...")
+						var restartResp any
+						if err := client.Post(ctx(), "/workers/worker-1/restart", nil, &restartResp); err != nil {
+							output.F.Warning(fmt.Sprintf("Could not restart: %v", err))
+							output.F.Info("Restart manually: reposwarm restart worker")
+						} else {
+							output.Successf("Worker restarted")
+						}
+					} else {
+						output.F.Warning("Worker restart required. Run: reposwarm restart worker")
+					}
+					return nil
+				}
 			}
 
-			body := map[string]string{"value": value}
-			var resp struct {
-				Key     string `json:"key"`
-				Value   string `json:"value"`
-				EnvFile string `json:"envFile"`
+			// Fallback: write to worker.env file directly
+			envPath := workerEnvFilePath()
+			if envPath == "" {
+				return fmt.Errorf("API unreachable and no worker.env file found.\nSet up locally: reposwarm new --local")
 			}
-			if err := client.Put(ctx(), "/workers/worker-1/env/"+key, body, &resp); err != nil {
-				return fmt.Errorf("failed to set %s: %w", key, err)
+
+			if !flagJSON {
+				output.F.Warning("API unreachable — writing to local file")
+			}
+
+			// Read existing, update, write back
+			cfg, _ := config.Load()
+			envVars, _ := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir())
+			if envVars == nil {
+				envVars = make(map[string]string)
+			}
+			envVars[key] = value
+
+			if err := writeWorkerEnvMap(envPath, envVars); err != nil {
+				return fmt.Errorf("writing worker.env: %w", err)
 			}
 
 			if flagJSON {
 				return output.JSON(map[string]any{
-					"key":     resp.Key,
-					"value":   resp.Value,
-					"envFile": resp.EnvFile,
-					"restart": restart,
+					"key": key, "value": config.MaskedToken(value),
+					"envFile": envPath, "source": "file",
 				})
 			}
 
-			output.Successf("Set %s = %s (written to %s)", key, resp.Value, resp.EnvFile)
-
-			if restart {
-				output.F.Info("Restarting worker...")
-				var restartResp any
-				if err := client.Post(ctx(), "/workers/worker-1/restart", nil, &restartResp); err != nil {
-					output.F.Warning(fmt.Sprintf("Could not restart: %v", err))
-					output.F.Info("Restart manually: reposwarm restart worker")
-				} else {
-					output.Successf("Worker restarted")
-				}
-			} else {
-				output.F.Warning("Worker restart required. Run: reposwarm restart worker")
-			}
+			output.Successf("Set %s = %s (written to %s)", key, config.MaskedToken(value), envPath)
+			output.F.Warning("Worker restart required. Run: reposwarm restart worker")
 			return nil
 		},
 	}
@@ -139,24 +235,65 @@ func newWorkerEnvUnsetCmd() *cobra.Command {
 		Args:  friendlyExactArgs(1, "reposwarm config worker-env unset <KEY>\n\nExample:\n  reposwarm config worker-env unset SOME_VAR"),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := args[0]
-			client, err := getClient()
-			if err != nil {
-				return err
+
+			// Try API first
+			client, clientErr := getClient()
+			if clientErr == nil {
+				var resp any
+				if err := client.Delete(ctx(), "/workers/worker-1/env/"+key, &resp); err == nil {
+					if flagJSON {
+						return output.JSON(map[string]any{"key": key, "removed": true})
+					}
+					output.Successf("Removed %s", key)
+					output.F.Warning("Worker restart required. Run: reposwarm restart worker")
+					return nil
+				}
 			}
 
-			var resp any
-			if err := client.Delete(ctx(), "/workers/worker-1/env/"+key, &resp); err != nil {
-				return fmt.Errorf("failed to unset %s: %w", key, err)
+			// Fallback: remove from worker.env file
+			envPath := workerEnvFilePath()
+			if envPath == "" {
+				return fmt.Errorf("API unreachable and no worker.env file found.\nSet up locally: reposwarm new --local")
+			}
+
+			if !flagJSON {
+				output.F.Warning("API unreachable — editing local file")
+			}
+
+			cfg, _ := config.Load()
+			envVars, _ := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir())
+			if envVars == nil {
+				envVars = make(map[string]string)
+			}
+			delete(envVars, key)
+
+			if err := writeWorkerEnvMap(envPath, envVars); err != nil {
+				return fmt.Errorf("writing worker.env: %w", err)
 			}
 
 			if flagJSON {
-				return output.JSON(map[string]any{"key": key, "removed": true})
+				return output.JSON(map[string]any{"key": key, "removed": true, "source": "file"})
 			}
 
-			output.Successf("Removed %s", key)
+			output.Successf("Removed %s from %s", key, envPath)
 			output.F.Warning("Worker restart required. Run: reposwarm restart worker")
 			return nil
 		},
 	}
 	return cmd
+}
+
+// writeWorkerEnvMap writes a map of env vars to a worker.env file.
+func writeWorkerEnvMap(path string, vars map[string]string) error {
+	keys := make([]string, 0, len(vars))
+	for k := range vars {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var lines []string
+	for _, k := range keys {
+		lines = append(lines, fmt.Sprintf("%s=%s", k, vars[k]))
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0600)
 }
