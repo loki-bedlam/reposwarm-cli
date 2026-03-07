@@ -118,8 +118,8 @@ func TestAgentName(t *testing.T) {
 func TestInstallDir(t *testing.T) {
 	env := &Environment{WorkDir: "/home/user/projects"}
 	dir := env.InstallDir()
-	if !strings.HasSuffix(dir, "/reposwarm") {
-		t.Errorf("InstallDir() = %s, want suffix /reposwarm", dir)
+	if !strings.HasSuffix(dir, "/.reposwarm") {
+		t.Errorf("InstallDir() = %s, want suffix /.reposwarm", dir)
 	}
 }
 
