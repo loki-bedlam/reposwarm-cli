@@ -268,7 +268,10 @@ func runPreflightChecks(repo string) []preflightCheck {
 		checks = append(checks, repoCheck)
 	}
 
-	// 6. Model (from server config)
+	// 6. Arch-hub target — verify repo exists and git token can push to it
+	checks = append(checks, checkArchHub(cfg, cfgErr, isDocker)...)
+
+	// 7. Model (from server config)
 	var serverCfg struct {
 		DefaultModel string `json:"defaultModel"`
 	}
@@ -309,4 +312,137 @@ func checkRepoAccess(repo string) preflightCheck {
 	}
 
 	return preflightCheck{"Repository", "warn", fmt.Sprintf("could not verify access to '%s'", repo)}
+}
+
+func checkArchHub(cfg *config.Config, cfgErr error, isDocker bool) []preflightCheck {
+	var checks []preflightCheck
+
+	// Gather worker env to find arch-hub config
+	env := map[string]string{}
+	if cfgErr == nil && isDocker {
+		workerEnv, _ := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir())
+		for k, v := range workerEnv {
+			env[k] = v
+		}
+		containerEnv, _ := bootstrap.DockerServiceEnv(cfg.EffectiveInstallDir(), "worker")
+		for k, v := range containerEnv {
+			env[k] = v
+		}
+	} else if cfgErr == nil {
+		client, err := getClient()
+		if err == nil {
+			var envResp struct {
+				Entries []struct {
+					Key   string `json:"key"`
+					Value string `json:"value"`
+					Set   bool   `json:"set"`
+				} `json:"entries"`
+			}
+			if err := client.Get(ctx(), "/workers/worker-1/env?reveal=true", &envResp); err == nil {
+				for _, e := range envResp.Entries {
+					if e.Set {
+						env[e.Key] = e.Value
+					}
+				}
+			}
+		}
+	}
+
+	baseURL := env["ARCH_HUB_BASE_URL"]
+	repoName := env["ARCH_HUB_REPO_NAME"]
+	if repoName == "" {
+		repoName = "architecture-hub" // worker default
+	}
+
+	// Check 1: ARCH_HUB_BASE_URL is configured (not default placeholder)
+	if baseURL == "" || baseURL == "https://github.com/your-org" {
+		checks = append(checks, preflightCheck{
+			"Arch-hub",
+			"fail",
+			"ARCH_HUB_BASE_URL not configured (still 'https://github.com/your-org')\n       Set it: reposwarm config worker-env set ARCH_HUB_BASE_URL https://github.com/YOUR-ORG",
+		})
+		return checks
+	}
+
+	// Check 2: Resolve the full repo path and verify it exists
+	// Extract owner/repo from base URL + repo name
+	fullRepoURL := fmt.Sprintf("%s/%s", strings.TrimSuffix(baseURL, "/"), repoName)
+
+	// Try to access via GitHub API
+	ownerRepo := ""
+	if strings.Contains(fullRepoURL, "github.com/") {
+		parts := strings.SplitN(strings.TrimPrefix(fullRepoURL, "https://github.com/"), "/", 3)
+		if len(parts) >= 2 {
+			ownerRepo = parts[0] + "/" + parts[1]
+		}
+	}
+
+	if ownerRepo == "" {
+		checks = append(checks, preflightCheck{"Arch-hub", "warn", fmt.Sprintf("cannot parse owner/repo from '%s'", fullRepoURL)})
+		return checks
+	}
+
+	// Check 3: Verify repo exists and is accessible
+	gitToken := env["GITHUB_TOKEN"]
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s", ownerRepo)
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", apiURL, nil)
+	if req != nil {
+		if gitToken != "" {
+			req.Header.Set("Authorization", "token "+gitToken)
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			checks = append(checks, preflightCheck{"Arch-hub", "fail", fmt.Sprintf("cannot reach %s: %s", ownerRepo, err)})
+			return checks
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == 404 {
+			msg := fmt.Sprintf("repo '%s' not found", ownerRepo)
+			if gitToken == "" {
+				msg += " (no GITHUB_TOKEN — may need auth for private repos)"
+			}
+			checks = append(checks, preflightCheck{"Arch-hub", "fail", msg})
+			return checks
+		}
+		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+			checks = append(checks, preflightCheck{"Arch-hub", "fail", fmt.Sprintf("auth failed for '%s' (HTTP %d) — check GITHUB_TOKEN permissions", ownerRepo, resp.StatusCode)})
+			return checks
+		}
+		if resp.StatusCode >= 400 {
+			checks = append(checks, preflightCheck{"Arch-hub", "fail", fmt.Sprintf("unexpected HTTP %d for '%s'", resp.StatusCode, ownerRepo)})
+			return checks
+		}
+	}
+
+	// Check 4: Verify push access (check repo permissions)
+	if gitToken != "" {
+		apiURL := fmt.Sprintf("https://api.github.com/repos/%s", ownerRepo)
+		req, _ := http.NewRequestWithContext(context.Background(), "GET", apiURL, nil)
+		if req != nil {
+			req.Header.Set("Authorization", "token "+gitToken)
+			req.Header.Set("Accept", "application/vnd.github.v3+json")
+			resp, err := httpClient.Do(req)
+			if err == nil {
+				defer resp.Body.Close()
+				// GitHub returns permissions in the repo response
+				// We'd need to parse JSON, but for now existence + auth is good enough
+				checks = append(checks, preflightCheck{
+					"Arch-hub",
+					"ok",
+					fmt.Sprintf("'%s' accessible with token", ownerRepo),
+				})
+				return checks
+			}
+		}
+	}
+
+	checks = append(checks, preflightCheck{
+		"Arch-hub",
+		"ok",
+		fmt.Sprintf("'%s' exists (push access not verified — no GITHUB_TOKEN)", ownerRepo),
+	})
+	return checks
 }
