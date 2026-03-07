@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -75,7 +76,7 @@ Examples:
 			awsSecret := awsSecretFlag
 			bedrockAPIKey := bedrockAPIKeyFlag
 
-			if !nonInterFlag && provider == "" {
+			if !nonInterFlag && !flagAgent && provider == "" {
 				// Interactive mode
 				reader := bufio.NewReader(os.Stdin)
 
@@ -254,7 +255,17 @@ Examples:
 						}
 					} else if !flagJSON {
 						output.F.Success(fmt.Sprintf("Worker env vars written to %s", workerEnvPath))
-						output.F.Info("Restart worker to apply: reposwarm restart worker")
+					}
+
+					// Auto-restart worker to pick up new env
+					restartCmd := exec.Command("docker", "compose", "up", "-d", "--force-recreate", "worker")
+					restartCmd.Dir = composeDir
+					if restartOut, err := restartCmd.CombinedOutput(); err != nil {
+						if !flagJSON {
+							output.F.Warning(fmt.Sprintf("Could not restart worker: %v\n%s", err, string(restartOut)))
+						}
+					} else if !flagJSON {
+						output.F.Success("Worker restarted with new env")
 					}
 				}
 			}
