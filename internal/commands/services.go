@@ -46,7 +46,7 @@ func newServicesCmd() *cobra.Command {
 			cfg, _ := config.Load()
 			if cfg != nil {
 				installDir := cfg.EffectiveInstallDir()
-				if bootstrap.IsDockerInstall(installDir) {
+				if (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(installDir)) {
 					return showDockerServices(installDir)
 				}
 			}

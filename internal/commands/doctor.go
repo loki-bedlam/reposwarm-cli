@@ -658,7 +658,7 @@ func checkWorkerEnv() []checkResult {
 
 	// Fetch worker env — use worker.env file for Docker installs, API for source installs
 	cfg, cfgErr := config.Load()
-	isDockerEnv := cfgErr == nil && bootstrap.IsDockerInstall(cfg.EffectiveInstallDir())
+	isDockerEnv := cfgErr == nil && (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(cfg.EffectiveInstallDir()))
 
 	envSet := make(map[string]bool)
 	if isDockerEnv {

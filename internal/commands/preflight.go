@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/reposwarm/reposwarm-cli/internal/bootstrap"
 	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -118,13 +119,31 @@ func runPreflightChecks(repo string) []preflightCheck {
 		checks = append(checks, preflightCheck{"Temporal", "fail", "not connected"})
 	}
 
-	// 3. Workers
+	// 3. Workers — for Docker installs, check container status directly
+	cfg, cfgErr := config.Load()
+	isDocker := cfgErr == nil && (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(cfg.EffectiveInstallDir()))
+
 	workers := gatherWorkerInfo(client)
 	healthy := 0
 	total := len(workers)
-	for _, w := range workers {
-		if w.Status == "healthy" {
-			healthy++
+
+	if isDocker {
+		// Overlay real Docker container status
+		dockerServices, _ := bootstrap.DockerComposeServices(cfg.EffectiveInstallDir())
+		for _, ds := range dockerServices {
+			if ds.Service == "worker" && ds.State == "running" {
+				healthy = 1
+				for i := range workers {
+					workers[i].Status = "healthy"
+				}
+				break
+			}
+		}
+	} else {
+		for _, w := range workers {
+			if w.Status == "healthy" {
+				healthy++
+			}
 		}
 	}
 
@@ -150,7 +169,50 @@ func runPreflightChecks(repo string) []preflightCheck {
 		checks = append(checks, preflightCheck{"Workers", "fail", "no workers detected"})
 	}
 
-	// 4. Worker env — driven by providers.json (single source of truth)
+	// 4. Worker env — for Docker, read from worker.env + container
+	if isDocker {
+		envSet := make(map[string]bool)
+		workerEnv, _ := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir())
+		containerEnv, _ := bootstrap.DockerServiceEnv(cfg.EffectiveInstallDir(), "worker")
+		for k, v := range workerEnv {
+			if v != "" {
+				envSet[k] = true
+			}
+		}
+		for k, v := range containerEnv {
+			if v != "" {
+				envSet[k] = true
+			}
+		}
+
+		required := map[string]bool{}
+		if cfgErr == nil {
+			for _, req := range config.RequiredEnvVarsWithGit(&cfg.ProviderConfig, cfg.GitProvider) {
+				if req.Required {
+					required[req.Key] = true
+				}
+			}
+		}
+		if len(required) == 0 {
+			required["ANTHROPIC_MODEL"] = true
+		}
+
+		var missingEnv []string
+		for req := range required {
+			if !envSet[req] {
+				missingEnv = append(missingEnv, req)
+			}
+		}
+		if len(missingEnv) > 0 {
+			checks = append(checks, preflightCheck{
+				"Worker env",
+				"fail",
+				fmt.Sprintf("missing: %s", strings.Join(missingEnv, ", ")),
+			})
+		} else {
+			checks = append(checks, preflightCheck{"Worker env", "ok", "all required vars set"})
+		}
+	} else {
 	var envResp struct {
 		Entries []struct {
 			Key string `json:"key"`
@@ -160,7 +222,6 @@ func runPreflightChecks(repo string) []preflightCheck {
 	if err := client.Get(ctx(), "/workers/worker-1/env", &envResp); err == nil {
 		// Build required env vars from config
 		required := map[string]bool{}
-		cfg, cfgErr := config.Load()
 		if cfgErr == nil {
 			for _, req := range config.RequiredEnvVarsWithGit(&cfg.ProviderConfig, cfg.GitProvider) {
 				if req.Required {
@@ -199,6 +260,7 @@ func runPreflightChecks(repo string) []preflightCheck {
 	} else {
 		checks = append(checks, preflightCheck{"Worker env", "warn", "could not check (API endpoint unavailable)"})
 	}
+	} // end non-Docker env check
 
 	// 5. Repo access (if specified)
 	if repo != "" {

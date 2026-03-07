@@ -2,8 +2,14 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"time"
 
+	"github.com/reposwarm/reposwarm-cli/internal/bootstrap"
+	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -22,6 +28,12 @@ Available services: api, worker, temporal, ui
 If no service is specified, shows logs from all services.`,
 		Args: friendlyMaxArgs(1, "reposwarm logs [service]\n\nServices: api, worker, temporal, ui\n\nExample:\n  reposwarm logs worker -n 100"),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Check for Docker install — use docker compose logs directly
+			cfg, _ := config.Load()
+			if cfg != nil && (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(cfg.EffectiveInstallDir())) {
+				return showDockerLogs(cfg.EffectiveInstallDir(), args, lines, tail)
+			}
+
 			client, err := getClient()
 			if err != nil {
 				return err
@@ -107,4 +119,25 @@ If no service is specified, shows logs from all services.`,
 	cmd.Flags().BoolVarP(&tail, "tail", "f", false, "Follow/stream logs")
 	cmd.Flags().IntVarP(&lines, "lines", "n", 50, "Number of lines to show")
 	return cmd
+}
+
+func showDockerLogs(installDir string, args []string, lines int, tail bool) error {
+	composeDir := filepath.Join(installDir, "temporal")
+	if _, err := os.Stat(filepath.Join(composeDir, "docker-compose.yml")); err != nil {
+		return fmt.Errorf("docker-compose.yml not found at %s", composeDir)
+	}
+
+	cmdArgs := []string{"compose", "logs", "--tail", strconv.Itoa(lines)}
+	if tail {
+		cmdArgs = append(cmdArgs, "-f")
+	}
+	if len(args) > 0 {
+		cmdArgs = append(cmdArgs, args[0])
+	}
+
+	cmd := exec.Command("docker", cmdArgs...)
+	cmd.Dir = composeDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }

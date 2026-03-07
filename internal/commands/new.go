@@ -81,6 +81,7 @@ Examples:
 					}
 					// Persist installDir + token so 'start/stop/restart' find it
 					cliCfg.InstallDir = dir
+					cliCfg.InstallType = "docker"
 					cliCfg.APIUrl = fmt.Sprintf("http://localhost:%s/v1", bsCfg.APIPort)
 					cliCfg.APIToken = result.Token
 					_ = config.Save(cliCfg)
@@ -91,6 +92,7 @@ Examples:
 					result, err := bootstrap.SetupLocal(env, dir, bsCfg, printer)
 					if err == nil {
 						cliCfg.InstallDir = dir
+					cliCfg.InstallType = "docker"
 						cliCfg.APIUrl = fmt.Sprintf("http://localhost:%s/v1", bsCfg.APIPort)
 						cliCfg.APIToken = result.Token
 						_ = config.Save(cliCfg)
@@ -117,6 +119,7 @@ Examples:
 
 				// Persist installDir + token so 'start/stop/restart' find the right directory
 				cliCfg.InstallDir = dir
+					cliCfg.InstallType = "docker"
 				cliCfg.APIUrl = fmt.Sprintf("http://localhost:%s/v1", bsCfg.APIPort)
 				cliCfg.APIToken = result.Token
 				_ = config.Save(cliCfg)

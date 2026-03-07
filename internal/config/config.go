@@ -47,6 +47,7 @@ type Config struct {
 	GitProvider string `json:"gitProvider,omitempty"` // github, codecommit, gitlab, azure, bitbucket
 
 	// Local setup defaults (used by 'reposwarm new --local' and guides)
+	InstallType    string `json:"installType,omitempty"` // "docker" or "source"
 	WorkerRepoURL  string `json:"workerRepoUrl,omitempty"`
 	APIRepoURL     string `json:"apiRepoUrl,omitempty"`
 	UIRepoURL      string `json:"uiRepoUrl,omitempty"`
@@ -133,7 +134,7 @@ func DefaultConfig() *Config {
 func ValidKeys() []string {
 	return []string{
 		"apiUrl", "apiToken", "region", "defaultModel", "chunkSize", "outputFormat",
-		"workerRepoUrl", "apiRepoUrl", "uiRepoUrl", "hubUrl", "archHubUrl", "dynamodbTable",
+		"installType", "workerRepoUrl", "apiRepoUrl", "uiRepoUrl", "hubUrl", "archHubUrl", "dynamodbTable",
 		"temporalPort", "temporalUiPort", "apiPort", "uiPort", "installDir",
 		"provider", "awsRegion", "proxyUrl", "proxyKey", "smallModel",
 	}
@@ -256,6 +257,11 @@ func Set(cfg *Config, key, value string) error {
 		cfg.UIPort = value
 	case "installDir":
 		cfg.InstallDir = value
+	case "installType":
+		if value != "docker" && value != "source" {
+			return fmt.Errorf("installType must be 'docker' or 'source'")
+		}
+		cfg.InstallType = value
 	case "provider":
 		if !IsValidProvider(value) {
 			return fmt.Errorf("unknown provider: %s (valid: anthropic, bedrock, litellm)", value)
@@ -290,4 +296,9 @@ func (c *Config) EffectiveProvider() Provider {
 		return c.ProviderConfig.Provider
 	}
 	return ProviderAnthropic
+}
+
+// IsDockerInstall returns true if the install type is Docker Compose.
+func (c *Config) IsDockerInstall() bool {
+	return c.InstallType == "docker"
 }

@@ -43,7 +43,7 @@ func newWorkersListCmd() *cobra.Command {
 			cfg, _ := config.Load()
 			if cfg != nil {
 				installDir := cfg.EffectiveInstallDir()
-				if bootstrap.IsDockerInstall(installDir) {
+				if (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(installDir)) {
 					dockerServices, _ := bootstrap.DockerComposeServices(installDir)
 					for i, w := range resp.Workers {
 						for _, ds := range dockerServices {
@@ -188,7 +188,7 @@ func newWorkersShowCmd() *cobra.Command {
 
 			// For Docker installs, overlay real container status
 			cfg, _ := config.Load()
-			if cfg != nil && bootstrap.IsDockerInstall(cfg.EffectiveInstallDir()) {
+			if cfg != nil && (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(cfg.EffectiveInstallDir())) {
 				dockerServices, _ := bootstrap.DockerComposeServices(cfg.EffectiveInstallDir())
 				for _, ds := range dockerServices {
 					if ds.Service == "worker" && ds.State == "running" {
@@ -220,7 +220,7 @@ func newWorkersShowCmd() *cobra.Command {
 			// Environment — prefer Docker container env or worker.env for Docker installs
 			F.Println()
 			F.Section("Environment")
-			isDocker := cfg != nil && bootstrap.IsDockerInstall(cfg.EffectiveInstallDir())
+			isDocker := cfg != nil && (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(cfg.EffectiveInstallDir()))
 
 			if isDocker {
 				// Read actual env from worker.env + container
