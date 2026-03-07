@@ -10,21 +10,21 @@ func TestResolveModelAliases(t *testing.T) {
 		want     string
 	}{
 		// Anthropic aliases
-		{"sonnet", ProviderAnthropic, nil, "claude-sonnet-4-6"},
-		{"opus", ProviderAnthropic, nil, "claude-opus-4-6"},
-		{"haiku", ProviderAnthropic, nil, "claude-haiku-4-5"},
+		{"sonnet", ProviderAnthropic, nil, "claude-sonnet-4-20250514"},
+		{"opus", ProviderAnthropic, nil, "claude-opus-4-20250514"},
+		{"haiku", ProviderAnthropic, nil, "claude-haiku-4-5-20241022"},
 
 		// Bedrock aliases
-		{"sonnet", ProviderBedrock, nil, "us.anthropic.claude-sonnet-4-6"},
-		{"opus", ProviderBedrock, nil, "us.anthropic.claude-opus-4-6-v1"},
+		{"sonnet", ProviderBedrock, nil, "us.anthropic.claude-sonnet-4-20250514-v1:0"},
+		{"opus", ProviderBedrock, nil, "us.anthropic.claude-opus-4-6-v1:0"},
 		{"haiku", ProviderBedrock, nil, "us.anthropic.claude-haiku-4-5-20251001-v1:0"},
 
 		// LiteLLM uses Anthropic IDs
-		{"sonnet", ProviderLiteLLM, nil, "claude-sonnet-4-6"},
-		{"opus", ProviderLiteLLM, nil, "claude-opus-4-6"},
+		{"sonnet", ProviderLiteLLM, nil, "claude-sonnet-4-20250514"},
+		{"opus", ProviderLiteLLM, nil, "claude-opus-4-20250514"},
 
 		// Raw model ID (not an alias) passes through unchanged
-		{"us.anthropic.claude-opus-4-6-v1", ProviderAnthropic, nil, "us.anthropic.claude-opus-4-6-v1"},
+		{"us.anthropic.claude-opus-4-6-v1:0", ProviderAnthropic, nil, "us.anthropic.claude-opus-4-6-v1:0"},
 		{"custom-model-id", ProviderBedrock, nil, "custom-model-id"},
 
 		// Pinned model overrides alias
@@ -56,7 +56,7 @@ func TestWorkerEnvVars(t *testing.T) {
 		if vars["AWS_REGION"] != "us-west-2" {
 			t.Errorf("Expected AWS_REGION=us-west-2, got %s", vars["AWS_REGION"])
 		}
-		if vars["ANTHROPIC_MODEL"] != "us.anthropic.claude-opus-4-6-v1" {
+		if vars["ANTHROPIC_MODEL"] != "us.anthropic.claude-opus-4-6-v1:0" {
 			t.Errorf("Expected Bedrock opus model, got %s", vars["ANTHROPIC_MODEL"])
 		}
 	})
@@ -74,7 +74,7 @@ func TestWorkerEnvVars(t *testing.T) {
 		if vars["ANTHROPIC_API_KEY"] != "sk-proxy-123" {
 			t.Errorf("Expected proxy key, got %s", vars["ANTHROPIC_API_KEY"])
 		}
-		if vars["ANTHROPIC_MODEL"] != "claude-sonnet-4-6" {
+		if vars["ANTHROPIC_MODEL"] != "claude-sonnet-4-20250514" {
 			t.Errorf("Expected Anthropic-style model, got %s", vars["ANTHROPIC_MODEL"])
 		}
 	})
@@ -85,7 +85,7 @@ func TestWorkerEnvVars(t *testing.T) {
 		if _, ok := vars["CLAUDE_CODE_USE_BEDROCK"]; ok {
 			t.Error("Should not set CLAUDE_CODE_USE_BEDROCK for Anthropic")
 		}
-		if vars["ANTHROPIC_MODEL"] != "claude-haiku-4-5" {
+		if vars["ANTHROPIC_MODEL"] != "claude-haiku-4-5-20241022" {
 			t.Errorf("Expected haiku model, got %s", vars["ANTHROPIC_MODEL"])
 		}
 	})
@@ -231,7 +231,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 			},
 			currentEnv: map[string]string{
 				"ANTHROPIC_API_KEY": "test-key",
-				"ANTHROPIC_MODEL":   "claude-sonnet-4-6",
+				"ANTHROPIC_MODEL":   "claude-sonnet-4-20250514",
 			},
 			expectValid: true,
 		},
@@ -241,7 +241,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 				Provider: ProviderAnthropic,
 			},
 			currentEnv: map[string]string{
-				"ANTHROPIC_MODEL": "claude-sonnet-4-6",
+				"ANTHROPIC_MODEL": "claude-sonnet-4-20250514",
 			},
 			expectValid:   false,
 			expectMissing: []string{"ANTHROPIC_API_KEY"},
@@ -256,7 +256,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 				"CLAUDE_CODE_USE_BEDROCK": "1",
 				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1",
-				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
+				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-20250514-v1:0",
 			},
 			expectValid: true,
 		},
@@ -269,7 +269,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 			currentEnv: map[string]string{
 				"CLAUDE_CODE_USE_BEDROCK": "true", // Should be "1"
 				"AWS_REGION":              "us-east-1",
-				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
+				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-20250514-v1:0",
 			},
 			expectValid: false,
 		},
@@ -283,7 +283,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 				"CLAUDE_CODE_USE_BEDROCK": "1",
 				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1",
-				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
+				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-20250514-v1:0",
 				"AWS_ACCESS_KEY_ID":       "AKIAIOSFODNN7EXAMPLE",
 				"AWS_SECRET_ACCESS_KEY":   "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
 			},
@@ -299,7 +299,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 				"CLAUDE_CODE_USE_BEDROCK": "1",
 				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1",
-				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
+				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-20250514-v1:0",
 				"AWS_ACCESS_KEY_ID":       "AKIAIOSFODNN7EXAMPLE",
 			},
 			expectValid:   false,
@@ -312,7 +312,7 @@ func TestValidateWorkerEnv(t *testing.T) {
 			},
 			currentEnv: map[string]string{
 				"ANTHROPIC_BASE_URL": "http://localhost:4000",
-				"ANTHROPIC_MODEL":    "claude-sonnet-4-6",
+				"ANTHROPIC_MODEL":    "claude-sonnet-4-20250514",
 			},
 			expectValid: true,
 		},
@@ -363,7 +363,7 @@ func TestWorkerEnvVarsWithAuth(t *testing.T) {
 				"CLAUDE_CODE_USE_BEDROCK":   "1",
 				"CLAUDE_PROVIDER":           "bedrock",
 				"AWS_REGION":                "us-west-2",
-				"ANTHROPIC_MODEL":           "us.anthropic.claude-opus-4-6-v1",
+				"ANTHROPIC_MODEL":           "us.anthropic.claude-opus-4-6-v1:0",
 			},
 			notExpected: []string{"AWS_PROFILE", "AWS_ACCESS_KEY_ID"},
 		},
@@ -381,7 +381,7 @@ func TestWorkerEnvVarsWithAuth(t *testing.T) {
 				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1",
 				"AWS_PROFILE":             "my-profile",
-				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
+				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-20250514-v1:0",
 			},
 			notExpected: []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"},
 		},
@@ -398,7 +398,7 @@ func TestWorkerEnvVarsWithAuth(t *testing.T) {
 				"CLAUDE_PROVIDER":          "bedrock",
 				"AWS_REGION":              "us-east-1", // default
 				"AWS_PROFILE":             "sso-profile",
-				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-6",
+				"ANTHROPIC_MODEL":         "us.anthropic.claude-sonnet-4-20250514-v1:0",
 			},
 		},
 	}

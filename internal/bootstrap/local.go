@@ -707,8 +707,6 @@ services:
       - DYNAMODB_ENDPOINT=http://localhost:8000
       - DYNAMODB_TABLE=${DYNAMODB_TABLE:-reposwarm-cache}
       - LOCAL_TESTING=true
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-      - GITLAB_TOKEN=${GITLAB_TOKEN:-}
     volumes:
       - config-data:/data
 
