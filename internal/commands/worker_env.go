@@ -210,6 +210,19 @@ func newWorkerEnvSetCmd() *cobra.Command {
 					EnvFile string `json:"envFile"`
 				}
 				if err := client.Put(ctx(), "/workers/worker-1/env/"+key, body, &resp); err == nil {
+					// Also persist to host worker.env for Docker installs
+					// API writes to container-internal path, but force-recreate reads from host file
+					if ep := workerEnvFilePath(); ep != "" {
+						cfg, _ := config.Load()
+						if envVars, fErr := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir()); fErr == nil {
+							if envVars == nil {
+								envVars = make(map[string]string)
+							}
+							envVars[key] = value
+							_ = writeWorkerEnvMap(ep, envVars)
+						}
+					}
+
 					if flagJSON {
 						return output.JSON(map[string]any{
 							"key": resp.Key, "value": resp.Value,
@@ -304,6 +317,14 @@ func newWorkerEnvUnsetCmd() *cobra.Command {
 			if clientErr == nil {
 				var resp any
 				if err := client.Delete(ctx(), "/workers/worker-1/env/"+key, &resp); err == nil {
+					// Also remove from host worker.env
+					if ep := workerEnvFilePath(); ep != "" {
+						cfg, _ := config.Load()
+						if envVars, fErr := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir()); fErr == nil {
+							delete(envVars, key)
+							_ = writeWorkerEnvMap(ep, envVars)
+						}
+					}
 					if flagJSON {
 						return output.JSON(map[string]any{"key": key, "removed": true})
 					}
