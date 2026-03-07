@@ -593,7 +593,8 @@ func showPlanAndConfirm(plan *bootstrap.Plan, env *bootstrap.Environment, force 
 	fmt.Printf("     • API server           %s\n", output.Dim("(ghcr.io/reposwarm/api)"))
 	fmt.Printf("     • Worker               %s\n", output.Dim("(ghcr.io/reposwarm/worker)"))
 	fmt.Printf("     • Web UI               %s\n", output.Dim("(ghcr.io/reposwarm/ui)"))
-	fmt.Printf("     • Temporal + PostgreSQL %s\n", output.Dim("(workflow engine)"))
+	fmt.Printf("     • Temporal + PostgreSQL %s\n", output.Dim("(workflow engine + database)"))
+	fmt.Printf("     • Temporal UI          %s\n", output.Dim("(workflow dashboard)"))
 	fmt.Printf("     • DynamoDB Local       %s\n", output.Dim("(cache store)"))
 	fmt.Println()
 
