@@ -53,11 +53,11 @@ For **local setup** (`reposwarm new --local`):
 |------|---------|-------|
 | Docker | 24+ | **Must be running** (not just installed) |
 | Docker Compose | v2 | Usually bundled with Docker Desktop |
-| Node.js | 22+ | For API and UI servers |
-| Python | 3.11+ | For the worker |
 | Git | 2.x | For cloning repos |
 
 > ⚠️ **Docker must be running.** The CLI checks this during setup and will warn you if Docker is installed but the daemon isn't started.
+>
+> No Node.js or Python needed — all services run as pre-built Docker containers.
 
 For **remote setup** (connecting to an existing server): just the CLI binary. No other dependencies.
 
@@ -226,6 +226,8 @@ reposwarm config model pin
 # Restart worker to apply changes
 reposwarm restart worker
 ```
+
+> **How IAM role auth works in Docker:** The worker container runs with `network_mode: host`, sharing the host's network stack. This lets the AWS SDK inside the container transparently access EC2 instance metadata (IMDSv2) or any credentials configured on the host (`~/.aws/`), exactly like it would in ECS Fargate. No credential injection or special configuration needed.
 
 ### 🔧 Configure Git Provider
 

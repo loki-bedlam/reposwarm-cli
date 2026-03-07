@@ -691,24 +691,22 @@ services:
   worker:
     container_name: reposwarm-worker
     image: ghcr.io/reposwarm/worker:latest
+    network_mode: host
     env_file:
       - path: ./worker.env
         required: false
     environment:
-      - TEMPORAL_SERVER_URL=temporal:7233
+      - TEMPORAL_SERVER_URL=localhost:7233
       - TEMPORAL_NAMESPACE=default
       - TEMPORAL_TASK_QUEUE=investigate-task-queue
       - AWS_REGION=${AWS_REGION:-us-east-1}
-      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_ENDPOINT=http://localhost:8000
       - DYNAMODB_TABLE=${DYNAMODB_TABLE:-reposwarm-cache}
       - LOCAL_TESTING=true
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITLAB_TOKEN=${GITLAB_TOKEN:-}
     volumes:
       - config-data:/data
-    depends_on:
-      - temporal
-      - dynamodb-local
 
   ui:
     container_name: reposwarm-ui
