@@ -14,7 +14,14 @@ func newResultsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "results",
 		Aliases: []string{"res"},
-		Short:   "Browse architecture investigation results",
+		Short:   "Browse architecture investigation results (→ use 'ask results' instead)",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if !flagJSON && !flagAgent {
+				fmt.Fprintf(os.Stderr, "💡 Results commands are moving to the standalone `ask` CLI.\n")
+				fmt.Fprintf(os.Stderr, "   Install: go install github.com/reposwarm/ask/cmd/ask@latest\n")
+				fmt.Fprintf(os.Stderr, "   Usage:   ask results %s\n\n", cmd.Name())
+			}
+		},
 	}
 	cmd.AddCommand(newResultsListCmd())
 	cmd.AddCommand(newResultsSectionsCmd())

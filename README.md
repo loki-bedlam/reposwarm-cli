@@ -376,58 +376,29 @@ reposwarm results audit
 
 ---
 
-### 🧠 Ask Architecture Questions (Askbox)
+### 📖 Query Architecture Results — `ask` CLI
 
-Query your architecture docs with AI. The [askbox](https://github.com/reposwarm/reposwarm-askbox) agent reads `.arch.md` files from your arch-hub and reasons across repos.
+Architecture querying has moved to the standalone [`ask`](https://github.com/reposwarm/ask) CLI.
+
+**RepoSwarm writes** architecture docs (investigations). **`ask` reads** them.
 
 ```bash
-# Quick Q&A about RepoSwarm usage (no askbox needed)
-reposwarm ask "how do I add a new repo?"
+# Install ask
+go install github.com/reposwarm/ask/cmd/ask@latest
 
-# Architecture analysis via askbox
-reposwarm ask --arch "how does auth work across all services?"
+# Set up local askbox (auto-detects RepoSwarm config)
+ask setup
 
-# Scope to specific repos
-reposwarm ask --arch --repos my-api,billing "how do they communicate?"
-
-# Use Strands adapter instead of Claude Agent SDK
-reposwarm ask --arch --adapter strands "what databases are used?"
-
-# Agent-friendly: get job-id immediately, poll separately
-reposwarm ask --arch --no-wait --json "what patterns do repos share?"
-
-# Force local askbox (Docker) — useful when API server is remote
-reposwarm ask --arch --local "what databases are used?"
+# Query your architecture
+ask "how does auth work across services?"
+ask results list
+ask results search "DynamoDB"
+ask results export --all -d ./docs
 ```
 
-#### How it works
+See the [ask README](https://github.com/reposwarm/ask) for full documentation.
 
-The askbox runs as a **persistent HTTP server** (port 8082) in your Docker Compose stack. On startup, it clones your arch-hub repo once and keeps it in memory. Questions are processed serially — submit via `POST /ask`, poll via `GET /ask/{id}`.
-
-**Routing priority for `--arch` questions:**
-1. **Local askbox** (`localhost:8082`) — tried first for local Docker installs
-2. **API server** (`/ask/arch`) — falls back to API, which proxies to askbox
-3. **One-shot Docker** (`--local` flag) — legacy fallback if no server running
-
-**Askbox API endpoints** (direct, on port 8082):
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/ask` | Submit a question — returns `{id, status}` |
-| `GET` | `/ask/{id}` | Poll job status — returns answer when complete |
-| `GET` | `/ask` | List all jobs (optional `?status=completed`) |
-| `GET` | `/health` | Server health, arch-hub status, job counts |
-| `POST` | `/arch-hub/refresh` | Re-clone or update the arch-hub |
-
-**Configuration:**
-```bash
-# Set arch-hub URL (required for askbox to load your docs)
-reposwarm config set archHubUrl https://github.com/your-org/architecture-hub.git
-
-# Override askbox URL (defaults to http://localhost:8082)
-reposwarm config set askboxUrl http://custom-host:8082
-```
-
-> **IAM role auth:** The askbox container uses `network_mode: host`, so the AWS SDK transparently accesses the host's credentials (EC2 instance profile, `~/.aws/`, env vars) — same as the worker container.
+> **Note:** `reposwarm ask --arch` and `reposwarm results` still work but will show a deprecation notice pointing to the `ask` CLI.
 
 ---
 

@@ -157,6 +157,10 @@ func SetupLocal(env *Environment, installDir string, cfg *Config, printer Printe
 	printer.Printf("    reposwarm repos add is-odd --url https://github.com/jonschlinkert/is-odd --source GitHub\n")
 	printer.Printf("    reposwarm investigate is-odd\n")
 	printer.Printf("\n")
+	printer.Printf("  📖 To query architecture results, install the ask CLI:\n")
+	printer.Printf("    go install github.com/reposwarm/ask/cmd/ask@latest\n")
+	printer.Printf("    ask setup    # Uses your RepoSwarm provider config\n")
+	printer.Printf("\n")
 
 	return result, nil
 }
@@ -661,14 +665,11 @@ services:
   api:
     container_name: reposwarm-api
     image: ghcr.io/reposwarm/api:latest
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "${API_PORT:-3000}:3000"
     environment:
       - PORT=3000
       - API_BEARER_TOKEN=${API_BEARER_TOKEN}
-      - ASKBOX_URL=http://host.docker.internal:${ASKBOX_PORT:-8082}
       - TEMPORAL_SERVER_URL=temporal:7233
       - TEMPORAL_HTTP_URL=http://temporal-ui:8080
       - TEMPORAL_NAMESPACE=default
@@ -725,40 +726,10 @@ services:
       api:
         condition: service_healthy
 
-  askbox:
-    container_name: reposwarm-askbox
-    image: ghcr.io/reposwarm/askbox:latest
-    network_mode: host
-    env_file:
-      - path: ./worker.env
-        required: false
-    environment:
-      - ASKBOX_ADAPTER=${ASKBOX_ADAPTER:-claude-agent-sdk}
-      - ASKBOX_PORT=${ASKBOX_PORT:-8082}
-      - ARCH_HUB_URL=${ARCH_HUB_URL:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - CLAUDE_CODE_USE_BEDROCK=${CLAUDE_CODE_USE_BEDROCK:-}
-      - AWS_REGION=${AWS_REGION:-}
-      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:-}
-      - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
-      - LITELLM_API_URL=${LITELLM_API_URL:-}
-      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
-      - MODEL_ID=${MODEL_ID:-}
-    volumes:
-      - askbox-output:/output
-      - askbox-arch-hub:/tmp/arch-hub
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/health')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
 volumes:
   temporal-data:
   dynamodb-data:
   config-data:
-  askbox-output:
-  askbox-arch-hub:
 `
 }
 
