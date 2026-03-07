@@ -200,7 +200,60 @@ func newWorkerEnvSetCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key, value := args[0], args[1]
 
-			// Try API first
+			// For Docker installs, always write directly to worker.env
+			// The API's /workers/worker-1/env endpoint may not have write access
+			// to the Docker volume, making direct file write more reliable
+			envPath := workerEnvFilePath()
+			if envPath != "" {
+				cfg, _ := config.Load()
+				envVars, _ := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir())
+				if envVars == nil {
+					envVars = make(map[string]string)
+				}
+				envVars[key] = value
+
+				if err := writeWorkerEnvMap(envPath, envVars); err != nil {
+					return fmt.Errorf("writing worker.env: %w", err)
+				}
+
+				// Also try to sync via API (best-effort, don't fail if it errors)
+				if client, clientErr := getClient(); clientErr == nil {
+					body := map[string]string{"value": value}
+					var resp any
+					_ = client.Put(ctx(), "/workers/worker-1/env/"+key, body, &resp)
+				}
+
+				if flagJSON {
+					return output.JSON(map[string]any{
+						"key": key, "value": config.MaskedToken(value),
+						"envFile": envPath, "restart": restart,
+					})
+				}
+
+				output.Successf("Set %s = %s (written to %s)", key, config.MaskedToken(value), envPath)
+
+				if restart {
+					cfgR, cfgErr := config.Load()
+					if cfgErr == nil && bootstrap.IsDockerInstall(cfgR.EffectiveInstallDir()) {
+						composeDir := filepath.Join(cfgR.EffectiveInstallDir(), bootstrap.ComposeSubDir)
+						output.F.Info("Restarting worker...")
+						restartCmd := osexec.Command("docker", "compose", "up", "-d", "--force-recreate", "worker")
+						restartCmd.Dir = composeDir
+						if _, err := restartCmd.CombinedOutput(); err != nil {
+							output.F.Warning(fmt.Sprintf("Could not restart: %v", err))
+						} else {
+							output.Successf("Worker restarted")
+						}
+					} else {
+						output.F.Warning("Worker restart required. Run: reposwarm restart worker")
+					}
+				} else {
+					output.F.Warning("Worker restart required. Run: reposwarm restart worker")
+				}
+				return nil
+			}
+
+			// No worker.env file — try API only
 			client, clientErr := getClient()
 			if clientErr == nil {
 				body := map[string]string{"value": value}
@@ -210,19 +263,6 @@ func newWorkerEnvSetCmd() *cobra.Command {
 					EnvFile string `json:"envFile"`
 				}
 				if err := client.Put(ctx(), "/workers/worker-1/env/"+key, body, &resp); err == nil {
-					// Also persist to host worker.env for Docker installs
-					// API writes to container-internal path, but force-recreate reads from host file
-					if ep := workerEnvFilePath(); ep != "" {
-						cfg, _ := config.Load()
-						if envVars, fErr := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir()); fErr == nil {
-							if envVars == nil {
-								envVars = make(map[string]string)
-							}
-							envVars[key] = value
-							_ = writeWorkerEnvMap(ep, envVars)
-						}
-					}
-
 					if flagJSON {
 						return output.JSON(map[string]any{
 							"key": resp.Key, "value": resp.Value,
@@ -247,56 +287,7 @@ func newWorkerEnvSetCmd() *cobra.Command {
 				}
 			}
 
-			// Fallback: write to worker.env file directly
-			envPath := workerEnvFilePath()
-			if envPath == "" {
-				return fmt.Errorf("API unreachable and no worker.env file found.\nSet up locally: reposwarm new --local")
-			}
-
-			if !flagJSON {
-				output.F.Warning("API unreachable — writing to local file")
-			}
-
-			// Read existing, update, write back
-			cfg, _ := config.Load()
-			envVars, _ := bootstrap.ReadWorkerEnvFile(cfg.EffectiveInstallDir())
-			if envVars == nil {
-				envVars = make(map[string]string)
-			}
-			envVars[key] = value
-
-			if err := writeWorkerEnvMap(envPath, envVars); err != nil {
-				return fmt.Errorf("writing worker.env: %w", err)
-			}
-
-			if flagJSON {
-				return output.JSON(map[string]any{
-					"key": key, "value": config.MaskedToken(value),
-					"envFile": envPath, "source": "file",
-				})
-			}
-
-			output.Successf("Set %s = %s (written to %s)", key, config.MaskedToken(value), envPath)
-
-			if restart {
-				cfg, cfgErr := config.Load()
-				if cfgErr == nil && bootstrap.IsDockerInstall(cfg.EffectiveInstallDir()) {
-					composeDir := filepath.Join(cfg.EffectiveInstallDir(), bootstrap.ComposeSubDir)
-					output.F.Info("Restarting worker...")
-					restartCmd := osexec.Command("docker", "compose", "up", "-d", "--force-recreate", "worker")
-					restartCmd.Dir = composeDir
-					if _, err := restartCmd.CombinedOutput(); err != nil {
-						output.F.Warning(fmt.Sprintf("Could not restart: %v", err))
-					} else {
-						output.Successf("Worker restarted")
-					}
-				} else {
-					output.F.Warning("Worker restart required. Run: reposwarm restart worker")
-				}
-			} else {
-				output.F.Warning("Worker restart required. Run: reposwarm restart worker")
-			}
-			return nil
+			return fmt.Errorf("no worker.env file found and API unavailable.\nSet up locally: reposwarm new --local")
 		},
 	}
 

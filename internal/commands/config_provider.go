@@ -299,6 +299,17 @@ Examples:
 				}
 
 				// Run inference health check after worker has restarted
+				// Skip for Docker installs — API container can't test worker inference
+				// Use 'reposwarm preflight' instead for Docker setups
+				dockerCfg, _ := config.Load()
+				isDockerSetup := isLocalInstall(dockerCfg) && getComposeDir(dockerCfg) != ""
+
+				if isDockerSetup {
+					if !flagJSON {
+						fmt.Println()
+						output.F.Info("Inference check skipped (Docker install — use 'reposwarm preflight' to verify)")
+					}
+				} else {
 				// Give the worker a moment to fully initialize with new env
 				time.Sleep(3 * time.Second)
 
@@ -363,7 +374,8 @@ Examples:
 						output.F.Info("Saving config anyway — fix the issue and run: reposwarm doctor")
 					}
 				}
-			}
+			} // end else (non-Docker inference check)
+			} // end if isDockerSetup
 
 			// Save config (even if inference failed — user can fix later)
 			if err := config.Save(cfg); err != nil {
