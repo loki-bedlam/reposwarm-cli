@@ -248,7 +248,7 @@ Examples:
 
 			// Local fallback
 			for _, svc := range services {
-				if err := restartLocal(svc); err != nil {
+				if err := restartLocalWithWait(svc, wait, timeout); err != nil {
 					if !flagJSON {
 						output.F.Printf("  %s %s: %v\n", output.Red("✗"), svc, err)
 					}
@@ -435,6 +435,10 @@ func stopLocal(svc string) error {
 
 // restartLocal restarts a service locally.
 func restartLocal(svc string) error {
+	return restartLocalWithWait(svc, false, 0)
+}
+
+func restartLocalWithWait(svc string, wait bool, timeout int) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
@@ -452,6 +456,20 @@ func restartLocal(svc string) error {
 	if !flagJSON {
 		output.Successf("%s restarted (local)", svc)
 	}
+
+	// Wait for Docker container health if requested
+	if wait && (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(installDir)) {
+		if !flagJSON {
+			output.F.Info(fmt.Sprintf("Waiting for %s to be healthy...", svc))
+		}
+		if err := bootstrap.WaitForDockerHealth(installDir, svc, timeout); err != nil {
+			return err
+		}
+		if !flagJSON {
+			output.Successf("%s is healthy", svc)
+		}
+	}
+
 	return nil
 }
 

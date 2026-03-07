@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/reposwarm/reposwarm-cli/internal/bootstrap"
 	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -264,8 +265,18 @@ Examples:
 						if !flagJSON {
 							output.F.Warning(fmt.Sprintf("Could not restart worker: %v\n%s", err, string(restartOut)))
 						}
-					} else if !flagJSON {
-						output.F.Success("Worker restarted with new env")
+					} else {
+						if !flagJSON {
+							output.F.Success("Worker restarted")
+							output.F.Info("Waiting for worker to be healthy...")
+						}
+						if err := bootstrap.WaitForDockerHealth(cfg.EffectiveInstallDir(), "worker", 60); err != nil {
+							if !flagJSON {
+								output.F.Warning(fmt.Sprintf("Worker health check timed out: %v", err))
+							}
+						} else if !flagJSON {
+							output.F.Success("Worker is healthy")
+						}
 					}
 				}
 			}

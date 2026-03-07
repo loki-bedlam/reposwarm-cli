@@ -1,12 +1,14 @@
 package bootstrap
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ComposeSubDir is the subdirectory within installDir for docker-compose.yml.
@@ -146,4 +148,29 @@ func CleanupOldProjectContainers() {
 	for _, vol := range []string{"temporal_temporal-data", "temporal_dynamodb-data", "temporal_config-data", "temporal_askbox-output", "temporal_askbox-arch-hub"} {
 		exec.Command("docker", "volume", "rm", "-f", vol).Run()
 	}
+}
+
+// WaitForDockerHealth waits for a Docker container to report healthy status.
+// Returns nil if healthy within timeout, error otherwise.
+func WaitForDockerHealth(installDir, service string, timeoutSec int) error {
+	composeDir := filepath.Join(installDir, ComposeSubDir)
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+
+	for time.Now().Before(deadline) {
+		cmd := exec.Command("docker", "compose", "ps", "--format", "json", service)
+		cmd.Dir = composeDir
+		out, err := cmd.Output()
+		if err == nil && len(out) > 0 {
+			var raw dockerServiceJSON
+			if json.Unmarshal(bytes.TrimSpace(out), &raw) == nil {
+				health := strings.ToLower(raw.Health)
+				state := strings.ToLower(raw.State)
+				if health == "healthy" || (health == "" && state == "running") {
+					return nil
+				}
+			}
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return fmt.Errorf("timeout waiting for %s to be healthy (%ds)", service, timeoutSec)
 }
