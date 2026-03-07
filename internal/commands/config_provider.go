@@ -244,6 +244,7 @@ Examples:
 
 			client, clientErr := getClient()
 			inferenceOK := false
+			workerRestarted := false
 
 			// For Docker Compose installs, write worker env to worker.env file
 			cfg, cfgErr := config.Load()
@@ -267,6 +268,7 @@ Examples:
 							output.F.Warning(fmt.Sprintf("Could not restart worker: %v\n%s", err, string(restartOut)))
 						}
 					} else {
+						workerRestarted = true
 						if !flagJSON {
 							output.F.Success("Worker restarted")
 							output.F.Info("Waiting for worker to be healthy...")
@@ -410,7 +412,9 @@ Examples:
 
 			if clientErr == nil {
 				output.Successf("Worker env vars synced (%d vars)", len(workerVars))
-				output.F.Warning("Worker restart required: reposwarm restart worker")
+				if !workerRestarted {
+					output.F.Warning("Worker restart required: reposwarm restart worker")
+				}
 			} else {
 				output.F.Warning("Could not sync to worker API — set env vars manually")
 				fmt.Println()
