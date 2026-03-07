@@ -18,7 +18,7 @@ func newResultsCmd() *cobra.Command {
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if !flagJSON && !flagAgent {
 				fmt.Fprintf(os.Stderr, "💡 Results commands are moving to the standalone `ask` CLI.\n")
-				fmt.Fprintf(os.Stderr, "   Install: go install github.com/reposwarm/ask/cmd/ask@latest\n")
+				fmt.Fprintf(os.Stderr, "   Install: curl -fsSL https://raw.githubusercontent.com/reposwarm/ask/main/install.sh | sh\n")
 				fmt.Fprintf(os.Stderr, "   Usage:   ask results %s\n\n", cmd.Name())
 			}
 		},

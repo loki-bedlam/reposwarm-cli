@@ -384,7 +384,7 @@ Architecture querying has moved to the standalone [`ask`](https://github.com/rep
 
 ```bash
 # Install ask
-go install github.com/reposwarm/ask/cmd/ask@latest
+curl -fsSL https://raw.githubusercontent.com/reposwarm/ask/main/install.sh | sh
 
 # Set up local askbox (auto-detects RepoSwarm config)
 ask setup
