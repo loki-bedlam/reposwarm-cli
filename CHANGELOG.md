@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-03-08 — Fix failed investigation counter reporting
+
+### Bug Fixes
+
+- **investigate: correctly count and report failed investigations** — In both sequential (`--parallel=1`) and batched (`--parallel=N`) modes, the `failed` counter was only incremented when the API call to start an investigation failed, not when the Temporal workflow itself completed with a `Failed` status. This caused the summary to report `0 failed` even when workflows had failed.
+- **investigate: show warning icon on failure summary** — The summary line now displays `⚠` instead of `✓` when any investigations failed.
+
+---
+
 ## 2026-03-08 — Doctor and DynamoDB credential fixes, auto-sync repos.json
 
 ### Bug Fixes

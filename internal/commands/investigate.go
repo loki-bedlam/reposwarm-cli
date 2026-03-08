@@ -293,6 +293,7 @@ Examples:
 									output.Successf("%s completed (%s)", output.Bold(rn), elapsed)
 								}
 							} else {
+								failed++
 								if !flagJSON {
 									output.F.Warning(fmt.Sprintf("%s finished with status: %s (%s)", rn, finalStatus, elapsed))
 								}
@@ -368,6 +369,7 @@ Examples:
 									output.Successf("%s completed (%s)", output.Bold(a.name), elapsed)
 								}
 							} else {
+								failed++
 								if !flagJSON {
 									output.F.Warning(fmt.Sprintf("%s finished with status: %s (%s)", a.name, finalStatus, elapsed))
 								}
@@ -429,7 +431,11 @@ Examples:
 				}
 				output.F.Println()
 				if parallelSet {
-					output.Successf("Completed %d/%d investigations (%d skipped, %d failed)", completed, len(enabledRepos), skipped, failed)
+					if failed > 0 {
+						output.F.Warning(fmt.Sprintf("Completed %d/%d investigations (%d skipped, %d failed)", completed, len(enabledRepos), skipped, failed))
+					} else {
+						output.Successf("Completed %d/%d investigations (%d skipped, %d failed)", completed, len(enabledRepos), skipped, failed)
+					}
 				} else if skipped > 0 {
 					output.Successf("Started %d/%d investigations (%d skipped, use --force to override)", started, len(enabledRepos), skipped)
 				} else {
