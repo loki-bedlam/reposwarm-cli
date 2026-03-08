@@ -173,7 +173,7 @@ func renderDashboard(client *api.Client, focusRepo string) error {
 			Completed:  completed,
 			Total:      total,
 			Current:    currentStep,
-			Elapsed:    elapsed(w.StartTime),
+			Elapsed:    duration(w),
 			WorkflowID: w.WorkflowID,
 		})
 	}

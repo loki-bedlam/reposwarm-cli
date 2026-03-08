@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-03-08 — Fix dashboard TIME column showing elapsed-since-creation
+
+### Bug Fixes
+
+- **dashboard: show actual workflow duration instead of time-since-creation** — The dashboard TIME column was calling `elapsed(w.StartTime)` which computes `now - startTime`, causing completed workflows to show ever-increasing times (e.g. 8m11s for a repo that only took 15s). Changed to use the existing `duration()` function which correctly computes `closeTime - startTime` for completed workflows and `now - startTime` for still-running ones.
+
+---
+
 ## 2026-03-08 — Fix failed investigation counter reporting
 
 ### Bug Fixes
