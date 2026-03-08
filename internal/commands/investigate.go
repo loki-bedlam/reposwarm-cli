@@ -157,7 +157,22 @@ Examples:
 				}
 
 				if len(enabledRepos) == 0 {
-					return fmt.Errorf("no enabled repos found\n  Add repos first: reposwarm repos add <name> --url <url> --source GitHub")
+					// Try auto-sync from worker's repos.json
+					added, syncErr := syncReposFromJSON(client)
+					if syncErr != nil || added == 0 {
+						return fmt.Errorf("no enabled repos found\n  Add repos first: reposwarm repos add <name> --url <url> --source GitHub")
+					}
+
+					// Re-fetch after sync
+					enabledReposList = nil
+					if err := client.Get(ctx(), "/repos", &enabledReposList); err != nil {
+						return fmt.Errorf("fetching repos after sync: %w", err)
+					}
+					for _, r := range enabledReposList {
+						if r.Enabled {
+							enabledRepos = append(enabledRepos, r.Name)
+						}
+					}
 				}
 
 				// Pre-flight (check once, not per repo)

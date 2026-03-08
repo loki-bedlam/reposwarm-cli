@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -167,6 +170,104 @@ func ensureWorkerParallel(client *api.Client, parallel int) error {
 	time.Sleep(5 * time.Second)
 	output.Successf("Worker restarted with REPOSWARM_PARALLEL=%s", desired)
 	return nil
+}
+
+// syncReposFromJSON reads repos.json and registers each repo with the API.
+// Search order:
+//  1. <installDir>/repos.json (local override)
+//  2. Docker: docker exec reposwarm-worker cat /app/prompts/repos.json
+//     Source: <installDir>/worker/prompts/repos.json
+//
+// Returns the number of repos successfully added.
+func syncReposFromJSON(client *api.Client) (int, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return 0, fmt.Errorf("loading config: %w", err)
+	}
+
+	installDir := cfg.EffectiveInstallDir()
+
+	// Read repos.json content — check local override first
+	var data []byte
+	localPath := filepath.Join(installDir, "repos.json")
+	if out, err := os.ReadFile(localPath); err == nil {
+		data = out
+	} else if bootstrap.IsDockerInstall(installDir) {
+		cmd := osexec.Command("docker", "exec", "reposwarm-worker", "cat", "/app/prompts/repos.json")
+		out, err := cmd.Output()
+		if err != nil {
+			return 0, fmt.Errorf("reading repos.json from worker container: %w", err)
+		}
+		data = out
+	} else {
+		path := filepath.Join(installDir, "worker", "prompts", "repos.json")
+		out, err := os.ReadFile(path)
+		if err != nil {
+			return 0, fmt.Errorf("reading %s: %w", path, err)
+		}
+		data = out
+	}
+
+	// Parse repos.json — repositories values can be objects or comment strings
+	var raw struct {
+		Repositories map[string]json.RawMessage `json:"repositories"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return 0, fmt.Errorf("parsing repos.json: %w", err)
+	}
+
+	type repoEntry struct {
+		URL         string `json:"url"`
+		Description string `json:"description"`
+		Type        string `json:"type"`
+	}
+
+	repos := make(map[string]repoEntry)
+	for name, rawVal := range raw.Repositories {
+		var entry repoEntry
+		if err := json.Unmarshal(rawVal, &entry); err != nil {
+			continue // skip comment strings like "_comment_react": "=== ..."
+		}
+		if entry.URL == "" {
+			continue // skip entries without a URL
+		}
+		repos[name] = entry
+	}
+
+	if len(repos) == 0 {
+		return 0, nil
+	}
+
+	// Sort names for deterministic output
+	var names []string
+	for name := range repos {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	output.F.Info(fmt.Sprintf("No repos registered — found repos.json with %d repos, syncing...", len(names)))
+
+	added := 0
+	for _, name := range names {
+		repo := repos[name]
+		body := map[string]any{
+			"name":   name,
+			"url":    repo.URL,
+			"source": detectSourceFromURL(repo.URL),
+		}
+		var result any
+		if err := client.Post(ctx(), "/repos", body, &result); err != nil {
+			output.F.Warning(fmt.Sprintf("  failed to add %s: %v", name, err))
+			continue
+		}
+		output.F.Printf("    + %s\n", name)
+		added++
+	}
+
+	if added > 0 {
+		output.Successf("Synced %d repos from repos.json", added)
+	}
+	return added, nil
 }
 
 // formatTimeAgo formats a duration as a human-readable "time ago" string.

@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased
+## 2026-03-08 — Doctor and DynamoDB credential fixes, auto-sync repos.json
 
 ### Bug Fixes
 
 - **doctor: fix Anthropic API key reported as NOT SET for Docker installs** — `checkProviderCredentials()` was fetching environment variables exclusively from the API endpoint (`/workers/worker-1/env?reveal=true`), which returns empty results for Docker-based installations. The fix applies the same Docker-aware pattern already used by `checkWorkerEnv()`: detecting the install type and reading from the local `worker.env` file via `bootstrap.ReadWorkerEnvFile()` for Docker installs, falling back to the API endpoint for source installs.
 
-- **fix DynamoDB not connecting for Docker installs** — The `TemporalComposeLocal()` docker-compose template was missing `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in the API service environment. The local DynamoDB container requires dummy AWS credentials to accept connections. The source install path already set these correctly (`local`/`local`), but the Docker compose template did not. Added `AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-local}` and `AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-local}` to the API service.
+- **fix DynamoDB not connecting for Docker installs** — The `TemporalComposeLocal()` docker-compose template was missing `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in both the API and worker service environments. The local DynamoDB container requires dummy AWS credentials to accept connections. Added `AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-local}` and `AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-local}` to both services.
+
+### Features
+
+- **auto-sync repos from repos.json** — When `investigate --all` finds zero registered repos, it now automatically syncs from `repos.json` (checked in order: `~/.reposwarm/repos.json` local override → Docker container `/app/prompts/repos.json` → source install `<installDir>/worker/prompts/repos.json`). Zero-touch setup for fresh Docker installs.
 
 ---
 
