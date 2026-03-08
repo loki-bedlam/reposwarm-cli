@@ -203,9 +203,26 @@ Examples:
 					return nil
 				}
 
+				// Check for recent investigations (unless --force)
+				var recentlyInvestigated map[string]string // repoName -> time ago string
+				if !force {
+					recentlyInvestigated = checkRecentInvestigations(client, enabledRepos)
+				}
+
 				// Start individual investigations for each enabled repo
 				started := 0
+				skipped := 0
 				for _, repoName := range enabledRepos {
+					// Skip if recently investigated (unless --force)
+					if timeAgo, wasRecent := recentlyInvestigated[repoName]; wasRecent {
+						skipped++
+						if !flagJSON {
+							output.F.Printf("  %s Skipping %s (investigated %s)\n",
+								output.Dim("⊘"), output.Bold(repoName), timeAgo)
+						}
+						continue
+					}
+
 					req := api.InvestigateRequest{
 						RepoName:  repoName,
 						Model:     model,
@@ -227,15 +244,20 @@ Examples:
 				if flagJSON {
 					return output.JSON(map[string]any{
 						"started": started,
+						"skipped": skipped,
 						"total":   len(enabledRepos),
 						"repos":   enabledRepos,
 					})
 				}
-				if started == 0 {
+				if started == 0 && skipped == 0 {
 					return fmt.Errorf("failed to start any investigations")
 				}
 				output.F.Println()
-				output.Successf("Started %d/%d investigations", started, len(enabledRepos))
+				if skipped > 0 {
+					output.Successf("Started %d/%d investigations (%d skipped, use --force to override)", started, len(enabledRepos), skipped)
+				} else {
+					output.Successf("Started %d/%d investigations", started, len(enabledRepos))
+				}
 				return nil
 			}
 
@@ -247,7 +269,7 @@ Examples:
 	cmd.Flags().StringVar(&model, "model", "", "Model ID (default from config)")
 	cmd.Flags().IntVar(&chunkSize, "chunk-size", 0, "Files per chunk (default from config)")
 	cmd.Flags().IntVar(&parallel, "parallel", 3, "Parallel limit (daily only)")
-	cmd.Flags().BoolVar(&force, "force", false, "Skip pre-flight checks")
+	cmd.Flags().BoolVar(&force, "force", false, "Skip pre-flight checks and re-investigate recently completed repos")
 	cmd.Flags().BoolVar(&replace, "replace", false, "Terminate existing workflow for this repo before starting")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Run pre-flight only, don't create workflow")
 	return cmd
