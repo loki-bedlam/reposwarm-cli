@@ -5,6 +5,7 @@
 ### Bug Fixes
 
 - **dashboard: show actual workflow duration instead of time-since-creation** — The dashboard TIME column was calling `elapsed(w.StartTime)` which computes `now - startTime`, causing completed workflows to show ever-increasing times (e.g. 8m11s for a repo that only took 15s). Changed to use the existing `duration()` function which correctly computes `closeTime - startTime` for completed workflows and `now - startTime` for still-running ones.
+- **dashboard: don't fake Completed status from wiki sections** — The dashboard was overriding the Temporal workflow status to "Completed" when all wiki sections existed (17/17), even if the workflow was still Running (e.g. during save_to_arch_hub or cleanup). This caused the dashboard to show repos as Completed while the CLI was still waiting for actual completion. Now uses the real Temporal status and shows "Saving..." when all analysis steps are done but the workflow is still running.
 
 ---
 
