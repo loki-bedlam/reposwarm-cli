@@ -24,6 +24,9 @@ func newNewCmd() *cobra.Command {
 	var guideOnly bool
 	var forceMode bool
 	var localMode bool
+	var archHubURL string
+	var archHubRepo string
+	var gitToken string
 
 	cmd := &cobra.Command{
 		Use:   "new",
@@ -87,6 +90,12 @@ Examples:
 					cliCfg.APIUrl = fmt.Sprintf("http://localhost:%s/v1", bsCfg.APIPort)
 					cliCfg.APIToken = result.Token
 					_ = config.Save(cliCfg)
+
+					// Write arch-hub config if provided via flags
+					if archHubURL != "" || gitToken != "" {
+						writeArchHubEnv(dir, archHubURL, archHubRepo, gitToken)
+					}
+
 					return output.JSON(result)
 				}
 				if flagAgent {
@@ -94,10 +103,28 @@ Examples:
 					result, err := bootstrap.SetupLocal(env, dir, bsCfg, printer)
 					if err == nil {
 						cliCfg.InstallDir = dir
-					cliCfg.InstallType = "docker"
+						cliCfg.InstallType = "docker"
 						cliCfg.APIUrl = fmt.Sprintf("http://localhost:%s/v1", bsCfg.APIPort)
 						cliCfg.APIToken = result.Token
 						_ = config.Save(cliCfg)
+
+						// Write arch-hub config if provided via flags
+						if archHubURL != "" || gitToken != "" {
+							writeArchHubEnv(dir, archHubURL, archHubRepo, gitToken)
+							fmt.Println()
+							fmt.Println("## Arch-Hub Configuration")
+							if archHubURL != "" {
+								fmt.Printf("OK: ARCH_HUB_BASE_URL=%s\n", archHubURL)
+							}
+							if archHubRepo != "" {
+								fmt.Printf("OK: ARCH_HUB_REPO_NAME=%s\n", archHubRepo)
+							} else {
+								fmt.Println("OK: ARCH_HUB_REPO_NAME=architecture-hub (default)")
+							}
+							if gitToken != "" {
+								fmt.Println("OK: GITHUB_TOKEN=***set***")
+							}
+						}
 
 						fmt.Println()
 						fmt.Println("OK: RepoSwarm local environment is running!")
@@ -322,6 +349,9 @@ Examples:
 	cmd.Flags().BoolVar(&forceMode, "force", false, "Destroy existing install without prompting")
 	cmd.Flags().BoolVar(&guideOnly, "guide-only", false, "Only generate guide files, don't prompt")
 	cmd.Flags().BoolVar(&localMode, "local", false, "Automated local setup: start Temporal, API, Worker, and UI")
+	cmd.Flags().StringVar(&archHubURL, "arch-hub-url", "", "Architecture hub base URL (e.g. https://github.com/my-org)")
+	cmd.Flags().StringVar(&archHubRepo, "arch-hub-repo", "", "Architecture hub repo name (default: architecture-hub)")
+	cmd.Flags().StringVar(&gitToken, "git-token", "", "GitHub token for repo access and arch-hub pushes")
 	return cmd
 }
 
@@ -681,6 +711,54 @@ func (p *spinnerPrinter) Printf(format string, args ...any) {
 		p.current = nil
 	}
 	fmt.Printf(format, args...)
+}
+
+// writeArchHubEnv writes arch-hub configuration to worker.env for non-interactive modes.
+// It merges with any existing env vars rather than overwriting the file.
+func writeArchHubEnv(installDir, archHubURL, archHubRepo, gitToken string) {
+	composeDir := filepath.Join(installDir, bootstrap.ComposeSubDir)
+	envPath := filepath.Join(composeDir, "worker.env")
+
+	// Read existing env vars
+	existingEnv, _ := bootstrap.ReadWorkerEnvFile(installDir)
+	if existingEnv == nil {
+		existingEnv = make(map[string]string)
+	}
+
+	changed := false
+	if archHubURL != "" {
+		existingEnv["ARCH_HUB_BASE_URL"] = archHubURL
+		changed = true
+	}
+	if archHubRepo != "" {
+		existingEnv["ARCH_HUB_REPO_NAME"] = archHubRepo
+		changed = true
+	}
+	if gitToken != "" {
+		existingEnv["GITHUB_TOKEN"] = gitToken
+		changed = true
+	}
+
+	if !changed {
+		return
+	}
+
+	// Write back
+	var lines []string
+	keys := make([]string, 0, len(existingEnv))
+	for k := range existingEnv {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		lines = append(lines, fmt.Sprintf("%s=%s", k, existingEnv[k]))
+	}
+	_ = os.WriteFile(envPath, []byte(strings.Join(lines, "\n")+"\n"), 0600)
+
+	// Restart worker to pick up new env
+	restartCmd := exec.Command("docker", "compose", "restart", "worker")
+	restartCmd.Dir = composeDir
+	_ = restartCmd.Run()
 }
 
 func setupArchHub(reader *bufio.Reader, cfg *config.Config) {
