@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths-ignore:
       - 'reports/**'
+      - 'cross-agent-tests/**'
       - '*.md'
   pull_request:
     branches: [main]
     paths-ignore:
       - 'reports/**'
+      - 'cross-agent-tests/**'
       - '*.md'
 
 jobs:
