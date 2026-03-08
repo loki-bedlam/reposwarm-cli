@@ -91,6 +91,35 @@ func newReposListCmd() *cobra.Command {
 	return cmd
 }
 
+// parseRepoURL extracts the repository name from a URL.
+// It handles trailing slashes and .git suffixes.
+func parseRepoURL(url string) string {
+	// Remove trailing slash
+	url = strings.TrimSuffix(url, "/")
+	// Extract last path segment
+	parts := strings.Split(url, "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	name := parts[len(parts)-1]
+	// Remove .git suffix if present
+	return strings.TrimSuffix(name, ".git")
+}
+
+// detectSourceFromURL auto-detects the source type from a repository URL.
+// Returns "GitHub" for github.com URLs, otherwise returns "CodeCommit" as default.
+func detectSourceFromURL(url string) string {
+	if strings.Contains(url, "github.com") {
+		return "GitHub"
+	}
+	return "CodeCommit"
+}
+
+// isRepoURL checks if a string is a repository URL (starts with http:// or https://).
+func isRepoURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
 func newReposAddCmd() *cobra.Command {
 	var urlFlag, source string
 
@@ -108,9 +137,7 @@ func newReposAddCmd() *cobra.Command {
 			arg := args[0]
 
 			// Check if args[0] is a URL
-			isURL := strings.HasPrefix(arg, "http://") || strings.HasPrefix(arg, "https://")
-
-			if isURL {
+			if isRepoURL(arg) {
 				// args[0] is a URL
 				if urlFlag != "" {
 					// --url overrides args[0] for the URL
@@ -120,12 +147,7 @@ func newReposAddCmd() *cobra.Command {
 				}
 
 				// Extract name from the URL (use the final URL)
-				parts := strings.Split(strings.TrimSuffix(url, "/"), "/")
-				if len(parts) > 0 {
-					name = parts[len(parts)-1]
-					// Remove .git suffix if present
-					name = strings.TrimSuffix(name, ".git")
-				}
+				name = parseRepoURL(url)
 			} else {
 				// args[0] is a name
 				name = arg
@@ -141,11 +163,7 @@ func newReposAddCmd() *cobra.Command {
 				finalSource = source
 			} else {
 				// Auto-detect from URL
-				if strings.Contains(url, "github.com") {
-					finalSource = "GitHub"
-				} else {
-					finalSource = "CodeCommit" // default
-				}
+				finalSource = detectSourceFromURL(url)
 			}
 
 			body := map[string]any{
