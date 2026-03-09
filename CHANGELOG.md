@@ -1,0 +1,84 @@
+# Changelog
+
+## 2026-03-08 — Fix dashboard TIME column showing elapsed-since-creation
+
+### Bug Fixes
+
+- **dashboard: show actual workflow duration instead of time-since-creation** — The dashboard TIME column was calling `elapsed(w.StartTime)` which computes `now - startTime`, causing completed workflows to show ever-increasing times (e.g. 8m11s for a repo that only took 15s). Changed to use the existing `duration()` function which correctly computes `closeTime - startTime` for completed workflows and `now - startTime` for still-running ones.
+- **dashboard: don't fake Completed status from wiki sections** — The dashboard was overriding the Temporal workflow status to "Completed" when all wiki sections existed (17/17), even if the workflow was still Running (e.g. during save_to_arch_hub or cleanup). This caused the dashboard to show repos as Completed while the CLI was still waiting for actual completion. Now uses the real Temporal status and shows "Saving..." when all analysis steps are done but the workflow is still running.
+
+---
+
+## 2026-03-08 — Fix failed investigation counter reporting
+
+### Bug Fixes
+
+- **investigate: correctly count and report failed investigations** — In both sequential (`--parallel=1`) and batched (`--parallel=N`) modes, the `failed` counter was only incremented when the API call to start an investigation failed, not when the Temporal workflow itself completed with a `Failed` status. This caused the summary to report `0 failed` even when workflows had failed.
+- **investigate: show warning icon on failure summary** — The summary line now displays `⚠` instead of `✓` when any investigations failed.
+
+---
+
+## 2026-03-08 — Doctor and DynamoDB credential fixes, auto-sync repos.json
+
+### Bug Fixes
+
+- **doctor: fix Anthropic API key reported as NOT SET for Docker installs** — `checkProviderCredentials()` was fetching environment variables exclusively from the API endpoint (`/workers/worker-1/env?reveal=true`), which returns empty results for Docker-based installations. The fix applies the same Docker-aware pattern already used by `checkWorkerEnv()`: detecting the install type and reading from the local `worker.env` file via `bootstrap.ReadWorkerEnvFile()` for Docker installs, falling back to the API endpoint for source installs.
+
+- **fix DynamoDB not connecting for Docker installs** — The `TemporalComposeLocal()` docker-compose template was missing `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in both the API and worker service environments. The local DynamoDB container requires dummy AWS credentials to accept connections. Added `AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-local}` and `AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-local}` to both services.
+
+### Features
+
+- **auto-sync repos from repos.json** — When `investigate --all` finds zero registered repos, it now automatically syncs from `repos.json` (checked in order: `~/.reposwarm/repos.json` local override → Docker container `/app/prompts/repos.json` → source install `<installDir>/worker/prompts/repos.json`). Zero-touch setup for fresh Docker installs.
+
+---
+
+## 2026-03-08 — Bulk terminate and workflow prune fix
+
+### Changes
+
+- `internal/commands/workflows.go` — Added `--all` flag to `workflows terminate`. Running `reposwarm workflows terminate --all --yes` now terminates all running workflows without interactive prompts. Previously each workflow had to be terminated individually.
+- `internal/commands/workflows_prune.go` — Fixed `workflows prune` to actually delete workflows from Temporal history using `DELETE /workflows/<id>` instead of just re-terminating them. Previously prune reported success but workflows remained in the list.
+
+### Usage
+
+```
+reposwarm workflows terminate --all --yes    # Terminate all running workflows
+reposwarm workflows prune --yes              # Delete old completed/failed/terminated workflows
+```
+
+---
+
+## 2026-03-08 — Sequential investigation mode (`--parallel` flag)
+
+### Problem
+
+Running `reposwarm investigate --all` on resource-constrained machines (16GB RAM) caused Temporal deadlock errors (`TMPRL1101`). The CLI fired `POST /investigate/single` for all repos simultaneously, starting 7+ concurrent Temporal workflows. The worker had no concurrency limits, so all repos cloned and analyzed in parallel, saturating I/O/CPU and blocking the Temporal event loop for >2 seconds.
+
+### Solution
+
+Single control point: the `--parallel` flag on `investigate --all` now controls both CLI dispatch behaviour and worker concurrency. No separate env vars to remember.
+
+```
+reposwarm investigate --all                  # Unchanged (fire-and-forget, parallel)
+reposwarm investigate --all --parallel=1     # Sequential: one repo at a time
+reposwarm investigate --all --parallel=2     # Batched: two repos at a time
+```
+
+When `--parallel` is set, the CLI:
+1. Writes `REPOSWARM_PARALLEL=N` to `worker.env` (skips if already set)
+2. Restarts the worker to apply the new concurrency limit (only if value changed)
+3. Checks for running workflows before restarting to avoid killing in-flight work
+4. Dispatches repos sequentially (or in batches of N), polling for completion between each
+
+### Changes
+
+**lac-reposwarm-cli (Go CLI):**
+
+- `internal/commands/investigate.go` — Rewrote `--all` loop with three modes: sequential (`--parallel=0` or `1`), batched (`--parallel=N`), and fire-and-forget (no flag, unchanged). Updated help text with examples.
+- `internal/commands/investigate_helpers.go` — Added `waitForWorkflow()` (polls `GET /workflows/<id>` until terminal state) and `ensureWorkerParallel()` (writes env var, restarts worker if changed, aborts if workflows are running).
+- `internal/api/types.go` — Added `InvestigateResponse` struct to capture `workflowId` from `POST /investigate/single`.
+
+**lac-repo-swarm (Python worker):**
+
+- `src/investigate_worker.py` — Reads `REPOSWARM_PARALLEL` env var and passes `max_concurrent_activities` / `max_concurrent_workflow_task_polls` to the Temporal `Worker()` constructor. Default (unset/0) = unlimited, preserving cloud behaviour.
+- `.env.example` — Documented `REPOSWARM_PARALLEL` with note that it is managed by the CLI.

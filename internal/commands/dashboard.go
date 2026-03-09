@@ -152,14 +152,15 @@ func renderDashboard(client *api.Client, focusRepo string) error {
 			}
 		}
 
-		// If all investigation steps are done, show as Completed
-		// (Temporal may still show Running during cleanup/arch-hub save)
+		// Use the actual Temporal workflow status — don't override based on wiki sections,
+		// since wiki may have results from previous runs and the workflow may still be running.
 		effectiveStatus := w.Status
-		if completed >= total && total > 0 {
-			effectiveStatus = "Completed"
-		}
 
-		if effectiveStatus != "Running" && currentStep == "" {
+		if effectiveStatus == "Running" {
+			if completed >= total && total > 0 {
+				currentStep = "Saving..."
+			}
+		} else if currentStep == "" {
 			if effectiveStatus == "Completed" {
 				currentStep = "Done"
 			} else {
@@ -173,7 +174,7 @@ func renderDashboard(client *api.Client, focusRepo string) error {
 			Completed:  completed,
 			Total:      total,
 			Current:    currentStep,
-			Elapsed:    elapsed(w.StartTime),
+			Elapsed:    duration(w),
 			WorkflowID: w.WorkflowID,
 		})
 	}
