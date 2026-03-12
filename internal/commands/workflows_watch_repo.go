@@ -487,10 +487,82 @@ func showOverviewProgress() error {
 			}
 		}
 		if !anyRunning {
+			// No running workflows — show post-run summary of recent completed/failed
+			if len(children) > 0 {
+				var completedSummary, failedSummary []api.WorkflowExecution
+				for _, w := range children {
+					switch w.Status {
+					case "Completed":
+						completedSummary = append(completedSummary, w)
+					case "Failed":
+						failedSummary = append(failedSummary, w)
+					}
+				}
+
+				if flagJSON {
+					return output.JSON(map[string]any{
+						"status":    "completed",
+						"completed": len(completedSummary),
+						"failed":    len(failedSummary),
+						"total":     len(children),
+						"completedRepos": repoNames(completedSummary),
+						"failedRepos":    repoNames(failedSummary),
+					})
+				}
+
+				output.F.Section("Investigation Complete")
+				output.F.Printf("  %s %d/%d repos completed",
+					output.Green("✓"), len(completedSummary), len(children))
+				if len(failedSummary) > 0 {
+					output.F.Printf("  %s %d failed", output.Red("✗"), len(failedSummary))
+				}
+				output.F.Println()
+
+				// Show duration for each completed repo
+				if len(completedSummary) > 0 {
+					output.F.Println()
+					for _, w := range completedSummary {
+						output.F.Printf("  %-35s %s\n", repoName(w.WorkflowID), duration(w))
+					}
+				}
+				if len(failedSummary) > 0 {
+					output.F.Println()
+					output.F.Printf("  %s Failed:\n", output.Red("✗"))
+					for _, w := range failedSummary {
+						output.F.Printf("    %-35s %s\n", repoName(w.WorkflowID), duration(w))
+					}
+				}
+
+				// Show total elapsed time
+				if daily != nil {
+					output.F.Println()
+					output.F.KeyValue("Total time", elapsed(daily.StartTime))
+				} else if len(children) > 0 {
+					// Find earliest start and latest close
+					earliest := children[0].StartTime
+					latest := ""
+					for _, w := range children {
+						if w.StartTime < earliest {
+							earliest = w.StartTime
+						}
+						if w.CloseTime > latest {
+							latest = w.CloseTime
+						}
+					}
+					if latest != "" {
+						output.F.Println()
+						output.F.KeyValue("Total time", elapsedBetween(earliest, latest))
+					}
+				}
+				output.F.Println()
+				return nil
+			}
+
 			if flagJSON {
-				return output.JSON(map[string]any{"error": "no active investigations"})
+				return output.JSON(map[string]any{"status": "idle", "message": "no active investigations"})
 			}
 			output.Infof("No active investigations found")
+			output.F.Info("Run: reposwarm investigate <repo> to start one")
 			return nil
 		}
 	}
@@ -710,5 +782,24 @@ func duration(w api.WorkflowExecution) string {
 		return "?"
 	}
 	d := end.Sub(start)
+	return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
+}
+
+func elapsedBetween(startTime, endTime string) string {
+	start, err1 := time.Parse(time.RFC3339Nano, startTime)
+	if err1 != nil {
+		start, err1 = time.Parse("2006-01-02T15:04:05Z", startTime)
+	}
+	end, err2 := time.Parse(time.RFC3339Nano, endTime)
+	if err2 != nil {
+		end, err2 = time.Parse("2006-01-02T15:04:05Z", endTime)
+	}
+	if err1 != nil || err2 != nil {
+		return "?"
+	}
+	d := end.Sub(start)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
 	return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
 }
