@@ -124,6 +124,7 @@ Examples:
 					RepoName:  repoArg,
 					Model:     model,
 					ChunkSize: chunkSize,
+					Force:     force,
 				}
 				var result any
 				if err := client.Post(ctx(), "/investigate/single", req, &result); err != nil {
@@ -240,6 +241,7 @@ Examples:
 						RepoName:  repoName,
 						Model:     model,
 						ChunkSize: chunkSize,
+						Force:     force,
 					}
 					var result any
 					if err := client.Post(ctx(), "/investigate/single", req, &result); err != nil {

@@ -66,6 +66,7 @@ type InvestigateRequest struct {
 	RepoName  string `json:"repo_name"`
 	Model     string `json:"model"`
 	ChunkSize int    `json:"chunk_size"`
+	Force     bool   `json:"force,omitempty"`
 }
 
 // InvestigateDailyRequest for POST /investigate/daily.
