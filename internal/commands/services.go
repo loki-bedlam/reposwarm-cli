@@ -195,6 +195,15 @@ Examples:
 				services = []string{svc}
 			}
 
+			// For Docker installs, always use local restart (docker compose up --force-recreate)
+			// The API restart endpoint uses plain "docker restart" which doesn't re-read
+			// env_file changes. Local restart uses --force-recreate which applies new env vars.
+			cfg, cfgErr := config.Load()
+			isDocker := cfgErr == nil && (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(cfg.EffectiveInstallDir()))
+			if isDocker {
+				local = true
+			}
+
 			// Try API first
 			if !local {
 				client, err := getClient()

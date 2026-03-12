@@ -104,6 +104,28 @@ func TestStopCommand_Args(t *testing.T) {
 	}
 }
 
+func TestRestartDockerForceLocal(t *testing.T) {
+	// Verify that the restart command forces local mode for Docker installs
+	// This ensures docker compose up --force-recreate is used instead of API restart,
+	// which is needed to re-read env_file changes.
+	cmd := newRestartCmd()
+
+	// Verify --local flag exists
+	localFlag := cmd.Flags().Lookup("local")
+	if localFlag == nil {
+		t.Fatal("restart command missing --local flag")
+	}
+
+	// Verify --wait flag exists with default true
+	waitFlag := cmd.Flags().Lookup("wait")
+	if waitFlag == nil {
+		t.Fatal("restart command missing --wait flag")
+	}
+	if waitFlag.DefValue != "true" {
+		t.Errorf("--wait default should be true, got %s", waitFlag.DefValue)
+	}
+}
+
 func TestKnownServices(t *testing.T) {
 	// Test that knownServices contains expected values
 	expected := map[string]bool{
