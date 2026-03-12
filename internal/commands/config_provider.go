@@ -441,6 +441,8 @@ Examples:
 	cmd.Flags().BoolVar(&pinFlag, "pin", false, "Pin model versions")
 	cmd.Flags().BoolVar(&nonInterFlag, "non-interactive", false, "Skip prompts")
 	cmd.Flags().StringVar(&authMethodFlag, "auth-method", "", "Bedrock auth method (iam-role|access-keys|profile|api-keys)")
+	cmd.Flags().StringVar(&authMethodFlag, "auth", "", "Bedrock auth method (alias for --auth-method)")
+	cmd.Flags().MarkHidden("auth")
 	cmd.Flags().StringVar(&awsProfileFlag, "aws-profile", "", "AWS profile name (for profile auth)")
 	cmd.Flags().StringVar(&awsKeyFlag, "aws-key", "", "AWS access key ID (for access-keys auth)")
 	cmd.Flags().StringVar(&awsSecretFlag, "aws-secret", "", "AWS secret access key (for access-keys auth)")
@@ -650,6 +652,8 @@ func newProviderSetCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&checkFlag, "check", false, "Run inference health check after switching")
 	cmd.Flags().StringVar(&setRegion, "region", "", "AWS region (for bedrock)")
 	cmd.Flags().StringVar(&setAuthMethod, "auth-method", "", "Auth method: iam-role, long-term-keys, profile, sso, api-key")
+	cmd.Flags().StringVar(&setAuthMethod, "auth", "", "Auth method (alias for --auth-method)")
+	cmd.Flags().MarkHidden("auth") // Hide from main help to avoid clutter; still works
 	cmd.Flags().StringVar(&setModel, "model", "", "Model alias or full ID")
 	cmd.Flags().BoolVar(&setPinFlag, "pin", false, "Pin resolved model aliases to specific versions")
 	cmd.Flags().StringVar(&setArchHubURL, "arch-hub-url", "", "Architecture hub base URL (e.g. https://github.com/my-org)")

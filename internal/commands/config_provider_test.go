@@ -49,7 +49,34 @@ func TestProviderSetCheckVerifiesWrittenEnv(t *testing.T) {
 	}
 }
 
-// TestVerifyWrittenWorkerEnv tests the verifyWrittenWorkerEnv helper.
+// TestProviderSetAuthFlagAlias verifies both --auth and --auth-method are
+// registered as flags on the provider set command.
+func TestProviderSetAuthFlagAlias(t *testing.T) {
+	root := NewRootCmd("test")
+
+	// Navigate to "config provider set" subcommand
+	configCmd, _, _ := root.Find([]string{"config", "provider", "set"})
+	if configCmd == nil {
+		t.Fatal("could not find 'config provider set' command")
+	}
+
+	tests := []struct {
+		name     string
+		flagName string
+	}{
+		{"auth-method flag exists", "auth-method"},
+		{"auth alias exists", "auth"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f := configCmd.Flags().Lookup(tc.flagName)
+			if f == nil {
+				t.Errorf("flag --%s not registered on 'config provider set'", tc.flagName)
+			}
+		})
+	}
+}
+
 func TestVerifyWrittenWorkerEnv(t *testing.T) {
 	tests := []struct {
 		name       string
