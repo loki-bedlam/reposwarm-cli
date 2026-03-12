@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/reposwarm/reposwarm-cli/internal/api"
 	"github.com/reposwarm/reposwarm-cli/internal/bootstrap"
 	"github.com/reposwarm/reposwarm-cli/internal/config"
 	"github.com/reposwarm/reposwarm-cli/internal/output"
@@ -548,8 +549,33 @@ func newProviderSetCmd() *cobra.Command {
 				}
 			}
 
-			// Also sync via API if available
-			client, clientErr := getClient()
+			// For Docker installs with --check, verify the written env file
+			// instead of hitting the (possibly crashed) worker container.
+			var clientErr error
+			if checkFlag && bootstrap.IsDockerInstall(installDir) {
+				composeDir := filepath.Join(installDir, bootstrap.ComposeSubDir)
+				workerEnvPath := filepath.Join(composeDir, "worker.env")
+				ok, missing := verifyWrittenWorkerEnv(workerEnvPath, workerVars)
+				if flagJSON {
+					return output.JSON(map[string]any{
+						"provider":  provider,
+						"model":     cfg.DefaultModel,
+						"envCheck":  ok,
+						"missing":   missing,
+					})
+				}
+				fmt.Println()
+				output.F.Section("Config Verification")
+				if ok {
+					output.Successf("worker.env contains all expected vars (%d vars)", len(workerVars))
+					output.F.Info("Worker env updated. Restart worker to apply: reposwarm restart worker")
+				} else {
+					output.F.Error(fmt.Sprintf("worker.env missing vars: %s", strings.Join(missing, ", ")))
+				}
+			} else {
+			// Also sync via API if available (non-Docker or no --check)
+			var client *api.Client
+			client, clientErr = getClient()
 			if clientErr == nil {
 				for k, v := range workerVars {
 					body := map[string]string{"value": v}
@@ -557,7 +583,7 @@ func newProviderSetCmd() *cobra.Command {
 					client.Put(ctx(), "/workers/worker-1/env/"+k, body, &resp)
 				}
 
-				// Run inference check if requested
+				// Run inference check if requested (non-Docker only)
 				if checkFlag {
 					if !flagJSON {
 						fmt.Println()
@@ -602,6 +628,7 @@ func newProviderSetCmd() *cobra.Command {
 						}
 					}
 				}
+			}
 			}
 
 			if flagJSON && !checkFlag {
@@ -883,6 +910,39 @@ func orDefault(val, def string) string {
 		return def
 	}
 	return val
+}
+
+// verifyWrittenWorkerEnv checks that a worker.env file contains the expected vars.
+// Returns (true, nil) if all expected vars are present, or (false, missingKeys) otherwise.
+func verifyWrittenWorkerEnv(envPath string, expected map[string]string) (bool, []string) {
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		keys := make([]string, 0, len(expected))
+		for k := range expected {
+			keys = append(keys, k)
+		}
+		return false, keys
+	}
+
+	env := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if i := strings.Index(line, "="); i > 0 {
+			env[line[:i]] = line[i+1:]
+		}
+	}
+
+	var missing []string
+	for k, v := range expected {
+		got, ok := env[k]
+		if !ok || got != v {
+			missing = append(missing, k)
+		}
+	}
+	return len(missing) == 0, missing
 }
 
 // writeWorkerEnv writes/merges env vars to a worker.env file.
