@@ -545,9 +545,11 @@ func restartLocalWithWait(svc string, wait bool, timeout int) error {
 			if err == nil {
 				workers := gatherWorkerInfo(client)
 				for _, w := range workers {
-					if len(w.EnvErrors) > 0 {
+					// Filter out false-positive errors (e.g. ANTHROPIC_API_KEY on Bedrock)
+					filteredErrors := filterEnvErrors(w.EnvErrors)
+					if len(filteredErrors) > 0 {
 						if !flagJSON {
-							output.F.Warning(fmt.Sprintf("Worker restarted but has env errors: %s", strings.Join(w.EnvErrors, ", ")))
+							output.F.Warning(fmt.Sprintf("Worker restarted but has env errors: %s", strings.Join(filteredErrors, ", ")))
 							output.F.Warning("Run: reposwarm doctor to diagnose")
 						}
 						break

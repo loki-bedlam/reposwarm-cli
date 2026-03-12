@@ -479,20 +479,31 @@ func checkAPI() []checkResult {
 func checkLocalTools() []checkResult {
 	var results []checkResult
 
+	// Check if this is a Docker install — Node.js, Python, and AWS CLI run inside containers
+	cfg, _ := config.Load()
+	isDocker := cfg != nil && (cfg.IsDockerInstall() || bootstrap.IsDockerInstall(cfg.EffectiveInstallDir()))
+
 	tools := []struct {
-		name    string
-		cmd     string
-		args    []string
-		level   string // "fail" or "warn" if missing
+		name       string
+		cmd        string
+		args       []string
+		level      string // "fail" or "warn" if missing
+		dockerSkip bool   // skip this check for Docker installs
 	}{
-		{"Git", "git", []string{"--version"}, "warn"},
-		{"Docker", "docker", []string{"--version"}, "warn"},
-		{"Node.js", "node", []string{"--version"}, "warn"},
-		{"Python", "python3", []string{"--version"}, "warn"},
-		{"AWS CLI", "aws", []string{"--version"}, "warn"},
+		{"Git", "git", []string{"--version"}, "warn", false},
+		{"Docker", "docker", []string{"--version"}, "warn", false},
+		{"Node.js", "node", []string{"--version"}, "warn", true},
+		{"Python", "python3", []string{"--version"}, "warn", true},
+		{"AWS CLI", "aws", []string{"--version"}, "warn", true},
 	}
 
 	for _, t := range tools {
+		if isDocker && t.dockerSkip {
+			c := checkResult{t.name, "ok", "not needed (runs inside Docker)"}
+			printCheck(c)
+			results = append(results, c)
+			continue
+		}
 		out, err := exec.Command(t.cmd, t.args...).Output()
 		if err != nil {
 			c := checkResult{t.name, t.level, "not found"}
